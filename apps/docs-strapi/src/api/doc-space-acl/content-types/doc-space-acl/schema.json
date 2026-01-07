@@ -1,0 +1,37 @@
+{
+  "kind": "collectionType",
+  "collectionName": "doc_space_acls",
+  "info": {
+    "singularName": "doc-space-acl",
+    "pluralName": "doc-space-acls",
+    "displayName": "DocSpaceAcl"
+  },
+  "options": {
+    "draftAndPublish": false
+  },
+  "pluginOptions": {},
+  "attributes": {
+    "docId": {
+      "type": "biginteger",
+      "required": true
+    },
+    "spaceId": {
+      "type": "biginteger",
+      "required": true
+    },
+    "perm": {
+      "type": "enumeration",
+      "required": true,
+      "enum": [
+        "READ",
+        "EDIT"
+      ]
+    },
+    "ctime": {
+      "type": "datetime"
+    },
+    "mtime": {
+      "type": "datetime"
+    }
+  }
+}

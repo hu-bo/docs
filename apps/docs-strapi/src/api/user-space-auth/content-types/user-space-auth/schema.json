@@ -1,0 +1,54 @@
+{
+  "kind": "collectionType",
+  "collectionName": "user_space_auths",
+  "info": {
+    "singularName": "user-space-auth",
+    "pluralName": "user-space-auths",
+    "displayName": "UserSpaceAuth"
+  },
+  "options": {
+    "draftAndPublish": false
+  },
+  "pluginOptions": {},
+  "attributes": {
+    "spaceId": {
+      "type": "biginteger",
+      "required": true
+    },
+    "username": {
+      "type": "string",
+      "maxLength": 128,
+      "required": true
+    },
+    "canRead": {
+      "type": "boolean",
+      "default": true
+    },
+    "canCreateFolder": {
+      "type": "boolean",
+      "default": false
+    },
+    "canCreateDoc": {
+      "type": "boolean",
+      "default": false
+    },
+    "superAdmin": {
+      "type": "boolean",
+      "default": false
+    },
+    "source": {
+      "type": "enumeration",
+      "default": "MANUAL",
+      "enum": [
+        "AUTO_INIT",
+        "MANUAL"
+      ]
+    },
+    "ctime": {
+      "type": "datetime"
+    },
+    "mtime": {
+      "type": "datetime"
+    }
+  }
+}

@@ -1,0 +1,27 @@
+{
+  "kind": "collectionType",
+  "collectionName": "space_depts",
+  "info": {
+    "singularName": "space-dept",
+    "pluralName": "space-depts",
+    "displayName": "SpaceDept"
+  },
+  "options": {
+    "draftAndPublish": true
+  },
+  "pluginOptions": {},
+  "attributes": {
+    "space_id": {
+      "type": "biginteger"
+    },
+    "dept_id": {
+      "type": "biginteger"
+    },
+    "ctime": {
+      "type": "datetime"
+    },
+    "mtime": {
+      "type": "datetime"
+    }
+  }
+}

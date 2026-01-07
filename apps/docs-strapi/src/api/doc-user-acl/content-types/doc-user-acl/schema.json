@@ -1,0 +1,38 @@
+{
+  "kind": "collectionType",
+  "collectionName": "doc_user_acls",
+  "info": {
+    "singularName": "doc-user-acl",
+    "pluralName": "doc-user-acls",
+    "displayName": "DocUserAcl"
+  },
+  "options": {
+    "draftAndPublish": false
+  },
+  "pluginOptions": {},
+  "attributes": {
+    "docId": {
+      "type": "biginteger",
+      "required": true
+    },
+    "username": {
+      "type": "string",
+      "maxLength": 128,
+      "required": true
+    },
+    "perm": {
+      "type": "enumeration",
+      "required": true,
+      "enum": [
+        "READ",
+        "EDIT"
+      ]
+    },
+    "ctime": {
+      "type": "datetime"
+    },
+    "mtime": {
+      "type": "datetime"
+    }
+  }
+}

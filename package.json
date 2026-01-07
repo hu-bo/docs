@@ -1,0 +1,57 @@
+{
+  "name": "app-node",
+  "private": true,
+  "version": "1.0.0",
+  "packageManager": "pnpm@9.15.4",
+  "description": "nodejs monorepo",
+  "keywords": [
+    "quant",
+    "indicator",
+    "strategy",
+    "trader"
+  ],
+  "author": "hubo9@qq.com",
+  "homepage": "",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/H-jx/jx-quant.git"
+  },
+  "license": "GPL-3.0-or-later",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "publish": "lerna publish",
+    "publish:canary": "lerna publish --canary --preid canary",
+    "add": "lerna add <package> --scope=<scope>",
+    "clean": "lerna clean",
+    "lint": "lerna run lint",
+    "test": "lerna run test",
+    "build": "lerna run build",
+    "build:packages": "pnpm -r --filter ./packages/** run build",
+    "version": "lerna version",
+    "version:patch": "lerna version patch",
+    "version:minor": "lerna version minor",
+    "version:major": "lerna version major",
+    "diff": "lerna diff",
+    "exec": "lerna exec -- <command>"
+  },
+  "devDependencies": {
+    "@swc/core": "^1.13.3",
+    "@types/node": "^24.10.1",
+    "@typescript-eslint/eslint-plugin": "^7.18.0",
+    "@typescript-eslint/parser": "^7.18.0",
+    "babel-jest": "^29.7.0",
+    "eslint": "^9.39.2",
+    "eslint-config-prettier": "^9.1.2",
+    "eslint-plugin-jest": "^28.14.0",
+    "eslint-plugin-prettier": "^5.5.4",
+    "jest": "^29.7.0",
+    "lerna": "^8.2.3",
+    "ts-jest": "^29.4.1",
+    "ts-node": "^10.9.2",
+    "tsup": "^8.5.0",
+    "turbo": "^2.5.5"
+  }
+}

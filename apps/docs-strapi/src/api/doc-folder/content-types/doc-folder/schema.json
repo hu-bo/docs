@@ -1,0 +1,27 @@
+{
+  "kind": "collectionType",
+  "collectionName": "doc_folders",
+  "info": {
+    "singularName": "doc-folder",
+    "pluralName": "doc-folders",
+    "displayName": "DocFolder"
+  },
+  "options": {
+    "draftAndPublish": true
+  },
+  "pluginOptions": {},
+  "attributes": {
+    "doc_id": {
+      "type": "biginteger"
+    },
+    "space_id": {
+      "type": "biginteger"
+    },
+    "ctime": {
+      "type": "datetime"
+    },
+    "mtime": {
+      "type": "datetime"
+    }
+  }
+}

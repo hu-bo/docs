@@ -1,0 +1,20 @@
+services:
+  docs-api:
+    image: node:20-alpine
+    container_name: docs-api
+    working_dir: /data/app/docs-api
+    environment:
+      NODE_ENV: production
+      NODE_CONFIG_ENV: production
+    ports:
+      - "3004:3004"
+    volumes:
+      - ./:/data/app/docs-api
+    command:
+      - sh
+      - -lc
+      - |
+        corepack enable
+        cd /data/app/docs-api
+        npm run start
+    restart: unless-stopped

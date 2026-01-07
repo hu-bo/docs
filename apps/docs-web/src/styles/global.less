@@ -1,0 +1,195 @@
+@import './variables.less';
+
+// 重置样式
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html, body {
+  height: 100%;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial,
+    'Noto Sans', sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol',
+    'Noto Color Emoji';
+  font-size: @font-size-base;
+  line-height: @line-height-base;
+  color: @text-color;
+  background-color: @body-background;
+}
+
+#app {
+  height: 100%;
+}
+
+// 自定义滚动条
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 3px;
+
+  &:hover {
+    background: rgba(0, 0, 0, 0.3);
+  }
+}
+
+// 链接样式
+a {
+  color: @primary-color;
+  text-decoration: none;
+
+  &:hover {
+    color: lighten(@primary-color, 10%);
+  }
+}
+
+// Flex 工具类
+.flex {
+  display: flex;
+}
+
+.flex-center {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.flex-between {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.flex-start {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+}
+
+.flex-end {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+}
+
+.flex-column {
+  display: flex;
+  flex-direction: column;
+}
+
+.flex-1 {
+  flex: 1;
+}
+
+.flex-wrap {
+  flex-wrap: wrap;
+}
+
+// 间距工具类
+.mt-xs { margin-top: @spacing-xs; }
+.mt-sm { margin-top: @spacing-sm; }
+.mt-md { margin-top: @spacing-md; }
+.mt-lg { margin-top: @spacing-lg; }
+.mt-xl { margin-top: @spacing-xl; }
+
+.mb-xs { margin-bottom: @spacing-xs; }
+.mb-sm { margin-bottom: @spacing-sm; }
+.mb-md { margin-bottom: @spacing-md; }
+.mb-lg { margin-bottom: @spacing-lg; }
+.mb-xl { margin-bottom: @spacing-xl; }
+
+.ml-xs { margin-left: @spacing-xs; }
+.ml-sm { margin-left: @spacing-sm; }
+.ml-md { margin-left: @spacing-md; }
+.ml-lg { margin-left: @spacing-lg; }
+.ml-xl { margin-left: @spacing-xl; }
+
+.mr-xs { margin-right: @spacing-xs; }
+.mr-sm { margin-right: @spacing-sm; }
+.mr-md { margin-right: @spacing-md; }
+.mr-lg { margin-right: @spacing-lg; }
+.mr-xl { margin-right: @spacing-xl; }
+
+.p-xs { padding: @spacing-xs; }
+.p-sm { padding: @spacing-sm; }
+.p-md { padding: @spacing-md; }
+.p-lg { padding: @spacing-lg; }
+.p-xl { padding: @spacing-xl; }
+
+// 文本工具类
+.text-center { text-align: center; }
+.text-left { text-align: left; }
+.text-right { text-align: right; }
+
+.text-primary { color: @primary-color; }
+.text-success { color: @success-color; }
+.text-warning { color: @warning-color; }
+.text-error { color: @error-color; }
+.text-secondary { color: @text-color-secondary; }
+
+.text-ellipsis {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+// 卡片样式
+.card {
+  background: @component-background;
+  border-radius: @border-radius-base;
+  box-shadow: @box-shadow-card;
+  padding: @spacing-lg;
+}
+
+// 页面容器
+.page-container {
+  padding: @spacing-lg;
+  min-height: calc(100vh - @header-height);
+}
+
+// 页面标题
+.page-header {
+  margin-bottom: @spacing-lg;
+
+  h1 {
+    font-size: @heading-3-size;
+    font-weight: 600;
+    margin: 0;
+  }
+
+  .description {
+    color: @text-color-secondary;
+    margin-top: @spacing-xs;
+  }
+}
+
+// 空状态
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: @spacing-xl * 2;
+  color: @text-color-secondary;
+
+  .empty-icon {
+    font-size: 48px;
+    margin-bottom: @spacing-md;
+  }
+}
+
+// 加载状态
+.loading-container {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 200px;
+}

@@ -1,0 +1,46 @@
+{
+  "kind": "collectionType",
+  "collectionName": "space_folders",
+  "info": {
+    "singularName": "space-folder",
+    "pluralName": "space-folders",
+    "displayName": "SpaceFolder"
+  },
+  "options": {
+    "draftAndPublish": true
+  },
+  "pluginOptions": {},
+  "attributes": {
+    "spaceId": {
+      "type": "biginteger"
+    },
+    "parentId": {
+      "type": "biginteger",
+      "default": "0"
+    },
+    "name": {
+      "type": "string",
+      "required": true,
+      "maxLength": 128
+    },
+    "visibilityScope": {
+      "type": "enumeration",
+      "enum": ["ALL", "DEPT_ONLY"],
+      "default": "ALL"
+    },
+    "order": {
+      "type": "integer",
+      "default": 0
+    },
+    "isDeleted": {
+      "type": "boolean",
+      "default": false
+    },
+    "ctime": {
+      "type": "datetime"
+    },
+    "mtime": {
+      "type": "datetime"
+    }
+  }
+}

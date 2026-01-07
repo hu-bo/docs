@@ -1,0 +1,50 @@
+{
+  "kind": "collectionType",
+  "collectionName": "docs",
+  "info": {
+    "singularName": "doc",
+    "pluralName": "docs",
+    "displayName": "Doc"
+  },
+  "options": {
+    "draftAndPublish": false
+  },
+  "pluginOptions": {},
+  "attributes": {
+    "title": {
+      "type": "string",
+      "maxLength": 128
+    },
+    "content": {
+      "type": "richtext"
+    },
+    "accessMode": {
+      "type": "enumeration",
+      "default": "OPEN_READONLY",
+      "enum": [
+        "OPEN_EDIT",
+        "OPEN_READONLY",
+        "WHITELIST_ONLY"
+      ]
+    },
+    "owner": {
+      "type": "string",
+      "maxLength": 64,
+      "required": true
+    },
+    "tags": {
+      "type": "string",
+      "maxLength": 512
+    },
+    "isDeleted": {
+      "type": "boolean",
+      "default": false
+    },
+    "ctime": {
+      "type": "datetime"
+    },
+    "mtime": {
+      "type": "datetime"
+    }
+  }
+}

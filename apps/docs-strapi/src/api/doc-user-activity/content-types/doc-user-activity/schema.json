@@ -1,0 +1,40 @@
+{
+  "kind": "collectionType",
+  "collectionName": "doc_user_activities",
+  "info": {
+    "singularName": "doc-user-activity",
+    "pluralName": "doc-user-activities",
+    "displayName": "DocUserActivity"
+  },
+  "options": {
+    "draftAndPublish": false
+  },
+  "pluginOptions": {},
+  "attributes": {
+    "docId": {
+      "type": "biginteger",
+      "required": true
+    },
+    "username": {
+      "type": "string",
+      "maxLength": 64,
+      "required": true
+    },
+    "lastViewedAt": {
+      "type": "datetime"
+    },
+    "visitCount": {
+      "type": "integer",
+      "default": 0
+    },
+    "lastEditedAt": {
+      "type": "datetime"
+    },
+    "ctime": {
+      "type": "datetime"
+    },
+    "mtime": {
+      "type": "datetime"
+    }
+  }
+}

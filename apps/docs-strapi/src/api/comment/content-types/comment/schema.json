@@ -1,0 +1,41 @@
+{
+  "kind": "collectionType",
+  "collectionName": "comments",
+  "info": {
+    "singularName": "comment",
+    "pluralName": "comments",
+    "displayName": "Comment"
+  },
+  "options": {
+    "draftAndPublish": false,
+    "timestamps": false
+  },
+  "attributes": {
+    "docId": {
+      "type": "biginteger",
+      "required": true
+    },
+    "parentId": {
+      "type": "biginteger",
+      "default": "0"
+    },
+    "username": {
+      "type": "string",
+      "required": true,
+      "maxLength": 128
+    },
+    "content": {
+      "type": "text"
+    },
+    "isDeleted": {
+      "type": "boolean",
+      "default": false
+    },
+    "ctime": {
+      "type": "datetime"
+    },
+    "mtime": {
+      "type": "datetime"
+    }
+  }
+}

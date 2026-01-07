@@ -1,0 +1,61 @@
+{
+  "kind": "collectionType",
+  "collectionName": "access_requests",
+  "info": {
+    "singularName": "access-request",
+    "pluralName": "access-requests",
+    "displayName": "AccessRequest"
+  },
+  "options": {
+    "draftAndPublish": false
+  },
+  "pluginOptions": {},
+  "attributes": {
+    "type": {
+      "type": "enumeration",
+      "required": true,
+      "enum": [
+        "SPACE",
+        "DOC"
+      ]
+    },
+    "targetId": {
+      "type": "biginteger",
+      "required": true
+    },
+    "username": {
+      "type": "string",
+      "maxLength": 128,
+      "required": true
+    },
+    "requestedPerm": {
+      "type": "string",
+      "maxLength": 64
+    },
+    "reason": {
+      "type": "text"
+    },
+    "status": {
+      "type": "enumeration",
+      "default": "PENDING",
+      "enum": [
+        "PENDING",
+        "APPROVED",
+        "REJECTED"
+      ]
+    },
+    "reviewedBy": {
+      "type": "string",
+      "maxLength": 128
+    },
+    "reviewedAt": {
+      "type": "datetime"
+    },
+    "ctime": {
+      "type": "datetime"
+    },
+    "mtime": {
+      "type": "datetime"
+    }
+  }
+}

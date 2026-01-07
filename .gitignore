@@ -1,0 +1,12 @@
+node_modules/
+.DS_Store
+dist/
+coverage/
+*.log
+.env
+debug
+release
+.rustc_info.json
+target/
+**/config/local.js
+

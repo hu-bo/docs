@@ -1,0 +1,53 @@
+{
+  "kind": "collectionType",
+  "collectionName": "spaces",
+  "info": {
+    "singularName": "space",
+    "pluralName": "spaces",
+    "displayName": "Space"
+  },
+  "options": {
+    "draftAndPublish": false,
+    "timestamps": false
+  },
+  "pluginOptions": {},
+  "attributes": {
+    "name": {
+      "type": "string",
+      "maxLength": 128,
+      "required": true
+    },
+    "codeName": {
+      "type": "string",
+      "maxLength": 128,
+      "required": true,
+      "unique": true
+    },
+    "creator": {
+      "type": "string",
+      "maxLength": 128,
+      "required": true
+    },
+    "icon": {
+      "type": "string",
+      "maxLength": 255
+    },
+    "datasetId": {
+      "type": "string",
+      "maxLength": 255
+    },
+    "isDeleted": {
+      "type": "boolean",
+      "default": false
+    },
+    "ctime": {
+      "type": "datetime"
+    },
+    "mtime": {
+      "type": "datetime"
+    },
+    "space_type": {
+      "type": "integer"
+    }
+  }
+}

@@ -1,0 +1,89 @@
+kind: pipeline
+type: docker
+name: docs-api
+
+trigger:
+  branch:
+    - master
+
+volumes:
+  - name: pnpm-cache
+    host:
+      path: /var/lib/drone-cache/pnpm/docs-api
+
+steps:
+
+  - name: restore-pnpm-cache
+    image: drillster/drone-volume-cache
+    volumes:
+      - name: pnpm-cache
+        path: /cache
+    settings:
+      restore: true
+      mount:
+        - /cache/pnpm-store
+
+  - name: build and package
+    image: node:20-alpine
+    volumes:
+      - name: pnpm-cache
+        path: /cache
+    commands:
+      - ls -a
+      - corepack enable
+      - corepack prepare pnpm@9 --activate
+      - pnpm config set store-dir /cache/pnpm-store
+      - pnpm config set registry https://registry.npmmirror.com/
+      - pnpm -w install --frozen-lockfile --filter './apps/docs-api...'
+      - pnpm --filter ./apps/docs-api run build
+      - pnpm deploy --filter ./apps/docs-api --node-linker=hoisted /drone/src/docs-api-deploy
+      - cd /drone/src/docs-api-deploy
+      - tar -czf /drone/src/docs-api.tar.gz ./*
+      - ls /drone/src/
+
+  - name: rebuild-pnpm-cache
+    image: drillster/drone-volume-cache
+    volumes:
+      - name: pnpm-cache
+        path: /cache
+    settings:
+      rebuild: true
+      mount:
+        - /cache/pnpm-store
+
+  - name: scp
+    image: appleboy/drone-scp
+    settings:
+      debug: false
+      source:
+        - docs-api.tar.gz
+      host:
+        from_secret: CURRENT_HOST
+      username: root
+      port: 22
+      password:
+        from_secret: SSH_PWD
+      target: /temp/app/
+
+  - name: deploy
+    image: appleboy/drone-ssh
+    settings:
+      host:
+        from_secret: CURRENT_HOST
+      username: root
+      password:
+        from_secret: SSH_PWD
+      port: 22
+      command_timeout: 2m
+      script:
+        - rm -rf /data/app/docs-api
+        - mkdir -p /data/app/docs-api
+        - cd /temp/app
+        - ls /temp/app -a
+        - tar xzf docs-api.tar.gz -C /data/app/docs-api
+        - rm -rf /temp/app/docs-api.tar.gz
+        - cd /data/app/docs-api
+        - docker stop docs-api || true
+        - docker rm docs-api || true
+        - docker-compose -f docker-compose.yml up -d
+        - docker logs docs-api
