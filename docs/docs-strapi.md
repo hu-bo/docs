@@ -48,17 +48,29 @@ docs-strapi/
 │   │   │   ├── routes/space.ts
 │   │   │   └── services/space.ts
 │   │   │
-│   │   ├── folder/           # 文件夹
-│   │   │   ├── content-types/folder/schema.json
-│   │   │   ├── controllers/folder.ts
-│   │   │   ├── routes/folder.ts
-│   │   │   └── services/folder.ts
+│   │   ├── space-folder/     # 目录（原 folder）
+│   │   │   ├── content-types/space-folder/schema.json
+│   │   │   ├── controllers/space-folder.ts
+│   │   │   ├── routes/space-folder.ts
+│   │   │   └── services/space-folder.ts
+│   │   │
+│   │   ├── space-dept/       # 空间部门映射
+│   │   │   ├── content-types/space-dept/schema.json
+│   │   │   ├── controllers/space-dept.ts
+│   │   │   ├── routes/space-dept.ts
+│   │   │   └── services/space-dept.ts
 │   │   │
 │   │   ├── doc/              # 文档
 │   │   │   ├── content-types/doc/schema.json
 │   │   │   ├── controllers/doc.ts
 │   │   │   ├── routes/doc.ts
 │   │   │   └── services/doc.ts
+│   │   │
+│   │   ├── doc-folder/       # 文档文件夹关联
+│   │   │   ├── content-types/doc-folder/schema.json
+│   │   │   ├── controllers/doc-folder.ts
+│   │   │   ├── routes/doc-folder.ts
+│   │   │   └── services/doc-folder.ts
 │   │   │
 │   │   ├── comment/          # 评论
 │   │   │   ├── content-types/comment/schema.json
@@ -84,11 +96,17 @@ docs-strapi/
 │   │   │   ├── routes/doc-space-acl.ts
 │   │   │   └── services/doc-space-acl.ts
 │   │   │
-│   │   └── doc-user-activity/ # 用户行为
-│   │       ├── content-types/doc-user-activity/schema.json
-│   │       ├── controllers/doc-user-activity.ts
-│   │       ├── routes/doc-user-activity.ts
-│   │       └── services/doc-user-activity.ts
+│   │   ├── doc-user-activity/ # 用户行为
+│   │   │   ├── content-types/doc-user-activity/schema.json
+│   │   │   ├── controllers/doc-user-activity.ts
+│   │   │   ├── routes/doc-user-activity.ts
+│   │   │   └── services/doc-user-activity.ts
+│   │   │
+│   │   └── access-request/   # 访问申请
+│   │       ├── content-types/access-request/schema.json
+│   │       ├── controllers/access-request.ts
+│   │       ├── routes/access-request.ts
+│   │       └── services/access-request.ts
 │   │
 │   ├── extensions/           # Strapi 扩展
 │   └── index.ts              # 应用入口
@@ -114,118 +132,168 @@ docs-strapi/
 
 | 字段 | 类型 | 说明 |
 |------|------|------|
-| id | bigint | 主键 |
-| name | string | 空间名称 |
-| codeName | string | 空间代号（唯一） |
-| creator | string | 创建人 username |
-| icon | string | 图标 URL |
-| datasetId | string | 知识库 ID |
-| isDeleted | boolean | 软删除标记 |
+| id | bigint | 主键（自增） |
+| documentId | string | Strapi 文档 ID（用于 URL） |
+| name | string(128) | 空间名称，必填 |
+| codeName | string(128) | 空间代号（唯一），必填 |
+| creator | string(128) | 创建人 username，必填 |
+| icon | string(255) | 图标 URL |
+| datasetId | string(255) | 知识库 ID |
+| space_type | integer | 空间类型：1=公共空间, 2=个人空间 |
+| isDeleted | boolean | 软删除标记，默认 false |
 | ctime | datetime | 创建时间 |
 | mtime | datetime | 修改时间 |
 
-### 2. Folder (文件夹)
-**API 标识**: `api::folder.folder`
+### 2. SpaceFolder (目录)
+**API 标识**: `api::space-folder.space-folder`
 
 | 字段 | 类型 | 说明 |
 |------|------|------|
-| id | bigint | 主键 |
-| spaceId | bigint | 所属空间 ID |
-| parentId | bigint | 父文件夹 ID（0 为顶级） |
-| name | string | 文件夹名称 |
-| visibilityScope | enum | 可见性：ALL / DEPT_ONLY |
-| order | integer | 排序值 |
-| isDeleted | boolean | 软删除标记 |
+| id | bigint | 主键（自增） |
+| documentId | string | Strapi 文档 ID |
+| spaceId | biginteger | 所属空间 ID |
+| parentId | biginteger | 父文件夹 ID（0 为顶级），默认 0 |
+| name | string(128) | 文件夹名称，必填 |
+| visibilityScope | enum | 可见性：ALL / DEPT_ONLY，默认 ALL |
+| order | integer | 排序值，默认 0 |
+| isDeleted | boolean | 软删除标记，默认 false |
 | ctime | datetime | 创建时间 |
 | mtime | datetime | 修改时间 |
 
-### 3. Doc (文档)
+### 3. SpaceDept (空间部门映射)
+**API 标识**: `api::space-dept.space-dept`
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| id | bigint | 主键（自增） |
+| documentId | string | Strapi 文档 ID |
+| space_id | biginteger | 空间 ID |
+| dept_id | biginteger | 部门 ID |
+| ctime | datetime | 创建时间 |
+| mtime | datetime | 修改时间 |
+
+### 4. Doc (文档)
 **API 标识**: `api::doc.doc`
 
 | 字段 | 类型 | 说明 |
 |------|------|------|
-| id | bigint | 主键 |
-| spaceId | bigint | 主空间 ID |
-| folderId | bigint | 所属文件夹 ID（0 为根目录） |
-| title | string | 文档标题 |
-| content | longtext | 文档内容（HTML/JSON） |
-| accessMode | enum | 访问模式：OPEN_EDIT / OPEN_READONLY / WHITELIST_ONLY |
-| owner | string | 创建人 username |
-| tags | string | 标签（逗号分隔） |
-| isDeleted | boolean | 软删除标记 |
+| id | bigint | 主键（自增） |
+| documentId | string | Strapi 文档 ID（用于 URL） |
+| title | string(128) | 文档标题 |
+| content | richtext | 文档内容（HTML/JSON） |
+| accessMode | enum | 访问模式：OPEN_EDIT / OPEN_READONLY / WHITELIST_ONLY，默认 OPEN_READONLY |
+| owner | string(64) | 创建人 username，必填 |
+| tags | string(512) | 标签（逗号分隔） |
+| isDeleted | boolean | 软删除标记，默认 false |
 | ctime | datetime | 创建时间 |
 | mtime | datetime | 修改时间 |
 
-### 4. Comment (评论)
+> **注意**: 文档不再直接存储 spaceId/folderId，通过 `doc_folder` 表关联
+
+### 5. DocFolder (文档文件夹关联)
+**API 标识**: `api::doc-folder.doc-folder`
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| id | bigint | 主键（自增） |
+| documentId | string | Strapi 文档 ID |
+| doc_id | biginteger | 文档 ID |
+| space_id | biginteger | 空间 ID |
+| ctime | datetime | 创建时间 |
+| mtime | datetime | 修改时间 |
+
+> **说明**: 解耦文档与空间的直接关联，支持文档多空间绑定
+
+### 6. Comment (评论)
 **API 标识**: `api::comment.comment`
 
 | 字段 | 类型 | 说明 |
 |------|------|------|
-| id | bigint | 主键 |
-| docId | bigint | 所属文档 ID |
-| parentId | bigint | 父评论 ID（0 为顶级评论） |
-| username | string | 评论者 |
+| id | bigint | 主键（自增） |
+| documentId | string | Strapi 文档 ID |
+| docId | biginteger | 所属文档 ID，必填 |
+| parentId | biginteger | 父评论 ID（0 为顶级评论），默认 0 |
+| username | string(128) | 评论者，必填 |
 | content | text | 评论内容 |
-| isDeleted | boolean | 软删除标记 |
+| isDeleted | boolean | 软删除标记，默认 false |
 | ctime | datetime | 创建时间 |
 | mtime | datetime | 修改时间 |
 
-### 5. UserSpaceAuth (空间授权)
+### 7. UserSpaceAuth (空间授权)
 **API 标识**: `api::user-space-auth.user-space-auth`
 
 | 字段 | 类型 | 说明 |
 |------|------|------|
-| id | bigint | 主键 |
-| spaceId | bigint | 空间 ID |
-| username | string | 用户名 |
-| canRead | boolean | 读取权限 |
-| canCreateFolder | boolean | 创建文件夹权限 |
-| canCreateDoc | boolean | 创建文档权限 |
-| superAdmin | boolean | 超级管理员权限 |
-| source | enum | 来源：AUTO_INIT / MANUAL |
-| isDeleted | boolean | 软删除标记 |
+| id | bigint | 主键（自增） |
+| documentId | string | Strapi 文档 ID |
+| spaceId | biginteger | 空间 ID，必填 |
+| username | string(128) | 用户名，必填 |
+| canRead | boolean | 读取权限，默认 true |
+| canCreateFolder | boolean | 创建文件夹权限，默认 false |
+| canCreateDoc | boolean | 创建文档权限，默认 false |
+| superAdmin | boolean | 超级管理员权限，默认 false |
+| source | enum | 来源：AUTO_INIT / MANUAL，默认 MANUAL |
 | ctime | datetime | 创建时间 |
 | mtime | datetime | 修改时间 |
 
-### 6. DocUserAcl (文档用户权限)
+### 8. DocUserAcl (文档用户权限)
 **API 标识**: `api::doc-user-acl.doc-user-acl`
 
 | 字段 | 类型 | 说明 |
 |------|------|------|
-| id | bigint | 主键 |
-| docId | bigint | 文档 ID |
-| username | string | 用户名 |
-| perm | enum | 权限：READ / EDIT |
-| isDeleted | boolean | 软删除标记 |
+| id | bigint | 主键（自增） |
+| documentId | string | Strapi 文档 ID |
+| docId | biginteger | 文档 ID，必填 |
+| username | string(128) | 用户名，必填 |
+| perm | enum | 权限：READ / EDIT，必填 |
 | ctime | datetime | 创建时间 |
 | mtime | datetime | 修改时间 |
 
-### 7. DocSpaceAcl (文档空间绑定)
+### 9. DocSpaceAcl (文档空间绑定)
 **API 标识**: `api::doc-space-acl.doc-space-acl`
 
 | 字段 | 类型 | 说明 |
 |------|------|------|
-| id | bigint | 主键 |
-| docId | bigint | 文档 ID |
-| spaceId | bigint | 空间 ID |
-| folderId | bigint | 文件夹 ID |
-| perm | enum | 权限：READ / EDIT |
-| isDeleted | boolean | 软删除标记 |
+| id | bigint | 主键（自增） |
+| documentId | string | Strapi 文档 ID |
+| docId | biginteger | 文档 ID，必填 |
+| spaceId | biginteger | 空间 ID，必填 |
+| perm | enum | 权限：READ / EDIT，必填 |
 | ctime | datetime | 创建时间 |
 | mtime | datetime | 修改时间 |
 
-### 8. DocUserActivity (用户行为)
+> **注意**: 移除了 folderId 字段，文件夹关联通过 `doc_folder` 表管理
+
+### 10. DocUserActivity (用户行为)
 **API 标识**: `api::doc-user-activity.doc-user-activity`
 
 | 字段 | 类型 | 说明 |
 |------|------|------|
-| id | bigint | 主键 |
-| docId | bigint | 文档 ID |
-| username | string | 用户名 |
+| id | bigint | 主键（自增） |
+| documentId | string | Strapi 文档 ID |
+| docId | biginteger | 文档 ID，必填 |
+| username | string(64) | 用户名，必填 |
 | lastViewedAt | datetime | 最后访问时间 |
-| visitCount | integer | 访问次数 |
+| visitCount | integer | 访问次数，默认 0 |
 | lastEditedAt | datetime | 最后编辑时间 |
-| isDeleted | boolean | 软删除标记 |
+| ctime | datetime | 创建时间 |
+| mtime | datetime | 修改时间 |
+
+### 11. AccessRequest (访问申请)
+**API 标识**: `api::access-request.access-request`
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| id | bigint | 主键（自增） |
+| documentId | string | Strapi 文档 ID |
+| type | enum | 申请类型：SPACE / DOC，必填 |
+| targetId | biginteger | 目标 ID（空间 ID 或文档 ID），必填 |
+| username | string(128) | 申请人，必填 |
+| requestedPerm | string(64) | 申请的权限 |
+| reason | text | 申请理由 |
+| status | enum | 状态：PENDING / APPROVED / REJECTED，默认 PENDING |
+| reviewedBy | string(128) | 审核人 |
+| reviewedAt | datetime | 审核时间 |
 | ctime | datetime | 创建时间 |
 | mtime | datetime | 修改时间 |
 
@@ -252,33 +320,66 @@ Authorization: Bearer <API_TOKEN>
 
 ### 各内容类型端点
 
-| 内容类型 | 端点前缀 |
-|----------|----------|
-| Space | `/api/spaces` |
-| Folder | `/api/folders` |
-| Doc | `/api/docs` |
-| Comment | `/api/comments` |
-| UserSpaceAuth | `/api/user-space-auths` |
-| DocUserAcl | `/api/doc-user-acls` |
-| DocSpaceAcl | `/api/doc-space-acls` |
-| DocUserActivity | `/api/doc-user-activities` |
+| 内容类型 | 端点前缀 | 说明 |
+|----------|----------|------|
+| Space | `/api/spaces` | 空间 |
+| SpaceFolder | `/api/space-folders` | 目录 |
+| SpaceDept | `/api/space-depts` | 空间部门映射 |
+| Doc | `/api/docs` | 文档 |
+| DocFolder | `/api/doc-folders` | 文档文件夹关联 |
+| Comment | `/api/comments` | 评论 |
+| UserSpaceAuth | `/api/user-space-auths` | 空间授权 |
+| DocUserAcl | `/api/doc-user-acls` | 文档用户权限 |
+| DocSpaceAcl | `/api/doc-space-acls` | 文档空间权限 |
+| DocUserActivity | `/api/doc-user-activities` | 用户行为 |
+| AccessRequest | `/api/access-requests` | 访问申请 |
+
+### ID 规范
+
+```
+URL 参数使用 documentId（Strapi 自动生成的字符串 ID）
+其他场景使用自增的 id 字段
+```
 
 ### 查询参数
 
 Strapi v5 使用标准查询参数进行过滤、排序、分页：
 
+```bash
+# 过滤
+?filters[field][$eq]=value
+?filters[field][$contains]=keyword
+
+# 排序
+?sort=field:asc
+?sort=field:desc
+
+# 分页
+?pagination[page]=1
+?pagination[pageSize]=20
+
+# 字段选择
+?fields[0]=name&fields[1]=codeName
+
+# 关联查询
+?populate=*
+?populate[relation][fields][0]=name
+```
 
 ### 复合查询示例
 
 ```bash
 # 获取某空间下未删除的文件夹，按排序值升序
-GET /api/folders?filters[spaceId][$eq]=1&filters[isDeleted][$eq]=false&sort=order:asc
+GET /api/space-folders?filters[spaceId][$eq]=1&filters[isDeleted][$eq]=false&sort=order:asc
 
 # 获取某用户在某空间的权限
-GET /api/user-space-auths?filters[spaceId][$eq]=1&filters[username][$eq]=zhangsan&filters[isDeleted][$eq]=false
+GET /api/user-space-auths?filters[spaceId][$eq]=1&filters[username][$eq]=zhangsan
 
-# 获取文档及其评论
-GET /api/docs/1?populate[comments][filters][isDeleted][$eq]=false
+# 获取文档及关联的空间信息
+GET /api/doc-folders?filters[doc_id][$eq]=123
+
+# 获取待审批的访问申请
+GET /api/access-requests?filters[status][$eq]=PENDING&filters[type][$eq]=DOC
 ```
 
 ---
@@ -294,6 +395,7 @@ GET /api/docs/1?populate[comments][filters][isDeleted][$eq]=false
     "name": "技术空间",
     "codeName": "tech",
     "creator": "admin",
+    "space_type": 1,
     "ctime": "2024-01-01T00:00:00.000Z",
     "mtime": "2024-01-01T00:00:00.000Z"
   },
@@ -402,13 +504,27 @@ export default {
 
 ## 软删除机制
 
-所有内容类型均采用软删除策略：
+部分内容类型采用软删除策略：
 
+**支持软删除的表**：
+- space
+- space_folder
+- doc
+- comment
+
+**不使用软删除的表**（直接删除）：
+- space_dept
+- doc_folder
+- user_space_auth
+- doc_user_acl
+- doc_space_acl
+- doc_user_activity
+- access_request
+
+**软删除规则**：
 - **字段**: `isDeleted` (boolean, 默认 false)
-- **删除操作**: 将 `isDeleted` 设为 true，而非物理删除，需要全局拦截delete改为软删除
+- **删除操作**: 将 `isDeleted` 设为 true，而非物理删除
 - **查询约定**: docs-api 调用时需显式过滤 `filters[isDeleted][$eq]=false`
-- **字段**: `isDeleted` (boolean, 默认 false)
-
 
 ---
 
@@ -513,15 +629,39 @@ pnpm strapi ts:generate-types
 
 ```
 Space (空间)
-  ├── Folder (文件夹) [1:N, spaceId]
-  │     └── Doc (文档) [1:N, folderId]
-  │           ├── Comment (评论) [1:N, docId]
-  │           ├── DocUserAcl (文档用户权限) [1:N, docId]
-  │           ├── DocSpaceAcl (文档空间绑定) [1:N, docId]
-  │           └── DocUserActivity (用户行为) [1:N, docId]
+  ├── space_type: 1=公共空间, 2=个人空间
+  │
+  ├── SpaceFolder (目录) [1:N, spaceId]
+  │
+  ├── SpaceDept (部门映射) [1:N, space_id]
+  │     └── 用于自动授权同部门用户
   │
   ├── UserSpaceAuth (空间授权) [1:N, spaceId]
+  │     └── 控制 canRead, canCreateFolder, canCreateDoc, superAdmin
+  │
   └── DocSpaceAcl (文档空间绑定) [1:N, spaceId]
+        └── 控制跨空间文档的权限 (READ/EDIT)
+
+Doc (文档)
+  ├── DocFolder (文件夹关联) [1:N, doc_id]
+  │     └── 关联 space_id，支持多空间绑定
+  │
+  ├── Comment (评论) [1:N, docId]
+  │     └── 支持嵌套回复 (parentId)
+  │
+  ├── DocUserAcl (用户权限) [1:N, docId]
+  │     └── 白名单权限 (READ/EDIT)
+  │
+  ├── DocSpaceAcl (空间绑定) [1:N, docId]
+  │     └── 跨空间绑定权限
+  │
+  └── DocUserActivity (用户行为) [1:N, docId]
+        └── 访问记录 (lastViewedAt, visitCount, lastEditedAt)
+
+AccessRequest (访问申请)
+  ├── type: SPACE / DOC
+  ├── targetId: 空间ID 或 文档ID
+  └── status: PENDING / APPROVED / REJECTED
 ```
 
 ---
@@ -531,7 +671,7 @@ Space (空间)
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │  docs-web (前端)                                             │
-│  http://localhost:5173                                       │
+│  http://localhost:8082                                       │
 ├─────────────────────────────────────────────────────────────┤
 │                          ↓ API 调用                          │
 ├─────────────────────────────────────────────────────────────┤
@@ -561,7 +701,8 @@ Space (空间)
 
 1. **仅供 docs-api 调用**: Strapi 不直接对外暴露，所有外部请求需经过 docs-api 层
 2. **Token 安全**: API Token 需妥善保管，不可泄露至前端或版本库
-3. **软删除**: 所有删除操作均为软删除，定期清理需另行实现
+3. **软删除**: 部分表使用软删除，部分表直接删除，需注意区分
 4. **字段命名**: Strapi 使用 camelCase，数据库使用 snake_case，Strapi 自动转换
 5. **分页限制**: 默认分页 25 条，最大 100 条，防止大数据量查询
 6. **类型生成**: 修改 schema 后需重新运行 `pnpm strapi ts:generate-types`
+7. **ID 使用**: URL 中使用 documentId，业务关联使用自增 id

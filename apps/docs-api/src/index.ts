@@ -20,7 +20,7 @@ app.use(helmet());
 
 // CORS 配置
 app.use(cors({
-  origin: config.corsOrigins,
+  origin: ['http://localhost:8082'],
   credentials: true,
 }));
 
