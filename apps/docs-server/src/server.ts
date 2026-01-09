@@ -1,10 +1,12 @@
 import express from 'express'
 import cors from 'cors'
+import cookieParser from 'cookie-parser'
 import { DataSource } from 'typeorm'
-import { getDataSource, init as initDataSource } from './config/dataSource.js'
-import v1Router from './routes/index.js'
+import { getDataSource, init as initDataSource } from './config/dataSource'
+import v1Router from './routes/index'
 import moment from 'moment'
-import { opsLogger } from './utils/biliLogger.js'
+import { opsLogger } from './utils/biliLogger'
+import { errorHandler, notFoundHandler } from './middlewares/errorHandler'
 
 export class App {
     app: express.Application
@@ -39,6 +41,9 @@ export class App {
             })
         )
 
+        // Cookie parser
+        this.app.use(cookieParser())
+
         // Body parsers with size limits
         this.app.use(express.json({ limit: '5mb' }))
         this.app.use(express.urlencoded({ extended: true, limit: '5mb' }))
@@ -47,32 +52,22 @@ export class App {
         this.app.disable('x-powered-by')
 
         // Health check endpoint
+        this.app.get('/health', (_req, res) => {
+            res.json({ status: 'ok', timestamp: new Date().toISOString() })
+        })
+
         this.app.get('/ping', (_req, res) => {
             res.json({ status: 'ok', database: this.AppDataSource?.isInitialized ? 'connected' : 'disconnected' })
         })
 
         // API routes
         this.app.use('/api/v1', v1Router)
-        this.app.use('/ping', (_req, res) => {
-            res.json({ status: 'ok' })
-        })
 
-        // Global error handler
-        this.app.use((err: Error, req: express.Request, res: express.Response, next: express.NextFunction) => {
-            console.error(`[${moment().format('HH:mm:ss')}][server]: Unhandled error: `, err)
-            opsLogger.error('UnhandledError', {
-                msg: err.message,
-                path: req.path,
-                method: req.method,
-                params: req.params,
-                query: req.query,
-                username: req.cookies['username'],
-                stack: err.stack
-            })
-            res.status(500).json({
-                message: '发生错误! ' + err.message
-            })
-        })
+        // 404 handler
+        this.app.use(notFoundHandler)
+
+        // Fallback error handler
+        this.app.use(errorHandler)
     }
 
     async stopApp() {

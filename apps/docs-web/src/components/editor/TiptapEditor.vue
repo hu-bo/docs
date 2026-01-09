@@ -1,389 +1,211 @@
 <script setup lang="ts">
-import { ref, watch, onBeforeUnmount } from 'vue';
+import { ref, watch, onBeforeUnmount, computed } from 'vue';
 import { useEditor, EditorContent } from '@tiptap/vue-3';
 import StarterKit from '@tiptap/starter-kit';
+import Placeholder from '@tiptap/extension-placeholder';
 import Link from '@tiptap/extension-link';
 import Image from '@tiptap/extension-image';
+import TextStyle from '@tiptap/extension-text-style';
+import { Color } from '@tiptap/extension-color';
 import Highlight from '@tiptap/extension-highlight';
 import CodeBlockLowlight from '@tiptap/extension-code-block-lowlight';
-import Placeholder from '@tiptap/extension-placeholder';
-import { TextStyle } from '@tiptap/extension-text-style';
-import Color from '@tiptap/extension-color';
 import { common, createLowlight } from 'lowlight';
-import type { JSONContent, Editor, AnyExtension } from '@tiptap/core';
 import {
-  BoldOutlined,
-  ItalicOutlined,
-  StrikethroughOutlined,
-  OrderedListOutlined,
-  UnorderedListOutlined,
-  CodeOutlined,
-  LinkOutlined,
-  PictureOutlined,
-  HighlightOutlined,
-  UndoOutlined,
-  RedoOutlined,
-} from '@ant-design/icons-vue';
-import { Tooltip, Dropdown, Menu, Input, Modal } from 'ant-design-vue';
+  Bold, Italic, Strikethrough, Code, List, ListOrdered,
+  Quote, Minus, Undo, Redo, Link as LinkIcon, Image as ImageIcon,
+  Heading1, Heading2, Heading3, Highlighter, Code2,
+} from 'lucide-vue-next';
+import type { Extension } from '@tiptap/core';
 
-// 创建 lowlight 实例
 const lowlight = createLowlight(common);
 
-interface Props {
-  modelValue?: JSONContent;
-  readonly?: boolean;
+const props = defineProps<{
+  modelValue?: string;
   placeholder?: string;
-  extensions?: AnyExtension[];
-}
+  editable?: boolean;
+  collaborationExtensions?: Extension[];
+}>();
 
-interface Emits {
-  (e: 'update:modelValue', value: JSONContent): void;
-  (e: 'ready', editor: Editor): void;
-}
+const emit = defineEmits<{
+  'update:modelValue': [value: string];
+  'blur': [];
+}>();
 
-const props = withDefaults(defineProps<Props>(), {
-  readonly: false,
-  placeholder: '开始编写内容...',
-  extensions: () => [],
-});
-
-const emit = defineEmits<Emits>();
-
-// 链接弹窗
-const linkModalVisible = ref(false);
 const linkUrl = ref('');
+const showLinkInput = ref(false);
 
-// 图片弹窗
-const imageModalVisible = ref(false);
-const imageUrl = ref('');
-
-// 创建编辑器
-const editor = useEditor({
-  content: props.modelValue,
-  editable: !props.readonly,
-  extensions: [
+const extensions = computed(() => {
+  const baseExtensions: Extension[] = [
     StarterKit.configure({
+      history: props.collaborationExtensions?.length ? false : undefined,
       codeBlock: false,
-    }),
-    Link.configure({
-      openOnClick: false,
-      HTMLAttributes: {
-        rel: 'noopener noreferrer',
-        target: '_blank',
-      },
-    }),
-    Image,
-    Highlight.configure({
-      multicolor: true,
-    }),
-    CodeBlockLowlight.configure({
-      lowlight,
-    }),
-    TextStyle,
-    Color,
+    }) as unknown as Extension,
     Placeholder.configure({
-      placeholder: props.placeholder,
-    }),
-    // 合并外部传入的扩展（如协作扩展）
-    ...props.extensions,
-  ],
-  onUpdate: ({ editor }) => {
-    emit('update:modelValue', editor.getJSON());
+      placeholder: props.placeholder || '开始输入内容...',
+    }) as unknown as Extension,
+    Link.configure({ openOnClick: false }) as unknown as Extension,
+    Image.configure({ inline: true, allowBase64: true }) as unknown as Extension,
+    TextStyle as unknown as Extension,
+    Color as unknown as Extension,
+    Highlight.configure({ multicolor: true }) as unknown as Extension,
+    CodeBlockLowlight.configure({ lowlight }) as unknown as Extension,
+  ];
+
+  if (props.collaborationExtensions?.length) {
+    return [...baseExtensions, ...props.collaborationExtensions];
+  }
+  return baseExtensions;
+});
+
+const editor = useEditor({
+  content: props.modelValue || '',
+  extensions: extensions.value,
+  editable: props.editable !== false,
+  editorProps: {
+    attributes: {
+      class: 'prose prose-sm max-w-none focus:outline-none min-h-[300px] p-4',
+      spellcheck: 'false',
+    },
   },
-  onCreate: ({ editor }) => {
-    emit('ready', editor);
+  onUpdate: ({ editor }) => {
+    emit('update:modelValue', editor.getHTML());
+  },
+  onBlur: () => {
+    emit('blur');
   },
 });
 
-// 监听外部内容变化
-watch(
-  () => props.modelValue,
-  (newContent) => {
-    if (editor.value && newContent) {
-      const currentContent = JSON.stringify(editor.value.getJSON());
-      const newContentStr = JSON.stringify(newContent);
-
-      if (currentContent !== newContentStr) {
-        editor.value.commands.setContent(newContent, { emitUpdate: false });
-      }
-    }
-  },
-  { deep: true }
-);
-
-// 监听只读状态变化
-watch(
-  () => props.readonly,
-  (readonly) => {
-    editor.value?.setEditable(!readonly);
+watch(() => props.modelValue, (newValue) => {
+  if (editor.value && newValue !== editor.value.getHTML()) {
+    editor.value.commands.setContent(newValue || '', false);
   }
-);
+});
 
-// 工具栏按钮状态
-const isActive = (name: string, attrs?: Record<string, unknown>) => {
-  return editor.value?.isActive(name, attrs) ?? false;
-};
-
-// 设置标题
-const setHeading = (level: number) => {
-  if (level === 0) {
-    editor.value?.chain().focus().setParagraph().run();
-  } else {
-    editor.value?.chain().focus().toggleHeading({ level: level as 1 | 2 | 3 }).run();
+watch(() => props.editable, (newValue) => {
+  if (editor.value) {
+    editor.value.setEditable(newValue !== false);
   }
-};
+});
 
-// 添加链接
-const openLinkModal = () => {
-  const previousUrl = editor.value?.getAttributes('link').href || '';
-  linkUrl.value = previousUrl;
-  linkModalVisible.value = true;
-};
-
-const confirmLink = () => {
+function setLink() {
   if (linkUrl.value) {
-    editor.value
-      ?.chain()
-      .focus()
-      .extendMarkRange('link')
-      .setLink({ href: linkUrl.value })
-      .run();
+    editor.value?.chain().focus().extendMarkRange('link').setLink({ href: linkUrl.value }).run();
   } else {
     editor.value?.chain().focus().unsetLink().run();
   }
-  linkModalVisible.value = false;
+  showLinkInput.value = false;
   linkUrl.value = '';
-};
+}
 
-// 添加图片
-const openImageModal = () => {
-  imageUrl.value = '';
-  imageModalVisible.value = true;
-};
-
-const confirmImage = () => {
-  if (imageUrl.value) {
-    editor.value?.chain().focus().setImage({ src: imageUrl.value }).run();
+function addImage() {
+  const url = window.prompt('输入图片 URL');
+  if (url) {
+    editor.value?.chain().focus().setImage({ src: url }).run();
   }
-  imageModalVisible.value = false;
-  imageUrl.value = '';
-};
-
-// 标题菜单项
-const headingItems = [
-  { key: '0', label: '正文' },
-  { key: '1', label: '标题 1' },
-  { key: '2', label: '标题 2' },
-  { key: '3', label: '标题 3' },
-];
+}
 
 onBeforeUnmount(() => {
   editor.value?.destroy();
 });
-
-// 暴露编辑器实例
-defineExpose({
-  editor,
-});
 </script>
 
 <template>
-  <div class="tiptap-editor">
-    <!-- 工具栏 -->
-    <div v-if="!readonly && editor" class="editor-toolbar">
-      <!-- 标题选择 -->
-      <div class="toolbar-group">
-        <Dropdown :trigger="['click']">
-          <button class="toolbar-btn heading-btn" type="button">
-            {{ editor.isActive('heading', { level: 1 }) ? 'H1' :
-               editor.isActive('heading', { level: 2 }) ? 'H2' :
-               editor.isActive('heading', { level: 3 }) ? 'H3' : '正文' }}
-          </button>
-          <template #overlay>
-            <Menu @click="({ key }) => setHeading(Number(key))">
-              <Menu.Item v-for="item in headingItems" :key="item.key">
-                {{ item.label }}
-              </Menu.Item>
-            </Menu>
-          </template>
-        </Dropdown>
-      </div>
+  <div class="border border-base-300 rounded-lg overflow-hidden bg-base-100">
+    <!-- Toolbar -->
+    <div v-if="editable !== false" class="flex flex-wrap gap-1 p-2 border-b border-base-300 bg-base-200">
+      <!-- History -->
+      <template v-if="!collaborationExtensions?.length">
+        <button class="btn btn-ghost btn-xs" :disabled="!editor?.can().undo()" @click="editor?.chain().focus().undo().run()">
+          <Undo class="w-4 h-4" />
+        </button>
+        <button class="btn btn-ghost btn-xs" :disabled="!editor?.can().redo()" @click="editor?.chain().focus().redo().run()">
+          <Redo class="w-4 h-4" />
+        </button>
+        <div class="divider divider-horizontal mx-1"></div>
+      </template>
 
-      <!-- 文本格式 -->
-      <div class="toolbar-group">
-        <Tooltip title="粗体">
-          <button
-            class="toolbar-btn"
-            :class="{ 'is-active': isActive('bold') }"
-            type="button"
-            @click="editor?.chain().focus().toggleBold().run()"
-          >
-            <BoldOutlined />
-          </button>
-        </Tooltip>
-        <Tooltip title="斜体">
-          <button
-            class="toolbar-btn"
-            :class="{ 'is-active': isActive('italic') }"
-            type="button"
-            @click="editor?.chain().focus().toggleItalic().run()"
-          >
-            <ItalicOutlined />
-          </button>
-        </Tooltip>
-        <Tooltip title="删除线">
-          <button
-            class="toolbar-btn"
-            :class="{ 'is-active': isActive('strike') }"
-            type="button"
-            @click="editor?.chain().focus().toggleStrike().run()"
-          >
-            <StrikethroughOutlined />
-          </button>
-        </Tooltip>
-        <Tooltip title="高亮">
-          <button
-            class="toolbar-btn"
-            :class="{ 'is-active': isActive('highlight') }"
-            type="button"
-            @click="editor?.chain().focus().toggleHighlight().run()"
-          >
-            <HighlightOutlined />
-          </button>
-        </Tooltip>
-      </div>
+      <!-- Headings -->
+      <button class="btn btn-ghost btn-xs" :class="{ 'btn-active': editor?.isActive('heading', { level: 1 }) }" @click="editor?.chain().focus().toggleHeading({ level: 1 }).run()">
+        <Heading1 class="w-4 h-4" />
+      </button>
+      <button class="btn btn-ghost btn-xs" :class="{ 'btn-active': editor?.isActive('heading', { level: 2 }) }" @click="editor?.chain().focus().toggleHeading({ level: 2 }).run()">
+        <Heading2 class="w-4 h-4" />
+      </button>
+      <button class="btn btn-ghost btn-xs" :class="{ 'btn-active': editor?.isActive('heading', { level: 3 }) }" @click="editor?.chain().focus().toggleHeading({ level: 3 }).run()">
+        <Heading3 class="w-4 h-4" />
+      </button>
 
-      <!-- 列表 -->
-      <div class="toolbar-group">
-        <Tooltip title="无序列表">
-          <button
-            class="toolbar-btn"
-            :class="{ 'is-active': isActive('bulletList') }"
-            type="button"
-            @click="editor?.chain().focus().toggleBulletList().run()"
-          >
-            <UnorderedListOutlined />
-          </button>
-        </Tooltip>
-        <Tooltip title="有序列表">
-          <button
-            class="toolbar-btn"
-            :class="{ 'is-active': isActive('orderedList') }"
-            type="button"
-            @click="editor?.chain().focus().toggleOrderedList().run()"
-          >
-            <OrderedListOutlined />
-          </button>
-        </Tooltip>
-      </div>
+      <div class="divider divider-horizontal mx-1"></div>
 
-      <!-- 代码和链接 -->
-      <div class="toolbar-group">
-        <Tooltip title="行内代码">
-          <button
-            class="toolbar-btn"
-            :class="{ 'is-active': isActive('code') }"
-            type="button"
-            @click="editor?.chain().focus().toggleCode().run()"
-          >
-            <CodeOutlined />
-          </button>
-        </Tooltip>
-        <Tooltip title="代码块">
-          <button
-            class="toolbar-btn"
-            :class="{ 'is-active': isActive('codeBlock') }"
-            type="button"
-            @click="editor?.chain().focus().toggleCodeBlock().run()"
-          >
-            <span style="font-family: monospace; font-size: 12px;">{}</span>
-          </button>
-        </Tooltip>
-        <Tooltip title="链接">
-          <button
-            class="toolbar-btn"
-            :class="{ 'is-active': isActive('link') }"
-            type="button"
-            @click="openLinkModal"
-          >
-            <LinkOutlined />
-          </button>
-        </Tooltip>
-        <Tooltip title="图片">
-          <button
-            class="toolbar-btn"
-            type="button"
-            @click="openImageModal"
-          >
-            <PictureOutlined />
-          </button>
-        </Tooltip>
-      </div>
+      <!-- Text Formatting -->
+      <button class="btn btn-ghost btn-xs" :class="{ 'btn-active': editor?.isActive('bold') }" @click="editor?.chain().focus().toggleBold().run()">
+        <Bold class="w-4 h-4" />
+      </button>
+      <button class="btn btn-ghost btn-xs" :class="{ 'btn-active': editor?.isActive('italic') }" @click="editor?.chain().focus().toggleItalic().run()">
+        <Italic class="w-4 h-4" />
+      </button>
+      <button class="btn btn-ghost btn-xs" :class="{ 'btn-active': editor?.isActive('strike') }" @click="editor?.chain().focus().toggleStrike().run()">
+        <Strikethrough class="w-4 h-4" />
+      </button>
+      <button class="btn btn-ghost btn-xs" :class="{ 'btn-active': editor?.isActive('code') }" @click="editor?.chain().focus().toggleCode().run()">
+        <Code class="w-4 h-4" />
+      </button>
+      <button class="btn btn-ghost btn-xs" :class="{ 'btn-active': editor?.isActive('highlight') }" @click="editor?.chain().focus().toggleHighlight({ color: '#fef08a' }).run()">
+        <Highlighter class="w-4 h-4" />
+      </button>
 
-      <!-- 撤销/重做 -->
-      <div class="toolbar-group">
-        <Tooltip title="撤销">
-          <button
-            class="toolbar-btn"
-            type="button"
-            :disabled="!editor?.can().undo()"
-            @click="editor?.chain().focus().undo().run()"
-          >
-            <UndoOutlined />
-          </button>
-        </Tooltip>
-        <Tooltip title="重做">
-          <button
-            class="toolbar-btn"
-            type="button"
-            :disabled="!editor?.can().redo()"
-            @click="editor?.chain().focus().redo().run()"
-          >
-            <RedoOutlined />
-          </button>
-        </Tooltip>
+      <div class="divider divider-horizontal mx-1"></div>
+
+      <!-- Lists -->
+      <button class="btn btn-ghost btn-xs" :class="{ 'btn-active': editor?.isActive('bulletList') }" @click="editor?.chain().focus().toggleBulletList().run()">
+        <List class="w-4 h-4" />
+      </button>
+      <button class="btn btn-ghost btn-xs" :class="{ 'btn-active': editor?.isActive('orderedList') }" @click="editor?.chain().focus().toggleOrderedList().run()">
+        <ListOrdered class="w-4 h-4" />
+      </button>
+      <button class="btn btn-ghost btn-xs" :class="{ 'btn-active': editor?.isActive('blockquote') }" @click="editor?.chain().focus().toggleBlockquote().run()">
+        <Quote class="w-4 h-4" />
+      </button>
+      <button class="btn btn-ghost btn-xs" :class="{ 'btn-active': editor?.isActive('codeBlock') }" @click="editor?.chain().focus().toggleCodeBlock().run()">
+        <Code2 class="w-4 h-4" />
+      </button>
+      <button class="btn btn-ghost btn-xs" @click="editor?.chain().focus().setHorizontalRule().run()">
+        <Minus class="w-4 h-4" />
+      </button>
+
+      <div class="divider divider-horizontal mx-1"></div>
+
+      <!-- Link & Image -->
+      <div class="dropdown">
+        <button tabindex="0" class="btn btn-ghost btn-xs" :class="{ 'btn-active': editor?.isActive('link') }">
+          <LinkIcon class="w-4 h-4" />
+        </button>
+        <div tabindex="0" class="dropdown-content z-[1] card card-compact w-64 p-2 shadow bg-base-100">
+          <div class="card-body">
+            <input v-model="linkUrl" type="url" placeholder="输入链接 URL" class="input input-bordered input-sm w-full" @keydown.enter="setLink" />
+            <button class="btn btn-primary btn-sm" @click="setLink">确定</button>
+          </div>
+        </div>
       </div>
+      <button class="btn btn-ghost btn-xs" @click="addImage">
+        <ImageIcon class="w-4 h-4" />
+      </button>
     </div>
 
-    <!-- 编辑器内容区 -->
-    <div class="editor-content">
-      <EditorContent :editor="editor" />
-    </div>
-
-    <!-- 链接弹窗 -->
-    <Modal
-      v-model:open="linkModalVisible"
-      title="插入链接"
-      @ok="confirmLink"
-    >
-      <Input
-        v-model:value="linkUrl"
-        placeholder="请输入链接地址"
-        @pressEnter="confirmLink"
-      />
-    </Modal>
-
-    <!-- 图片弹窗 -->
-    <Modal
-      v-model:open="imageModalVisible"
-      title="插入图片"
-      @ok="confirmImage"
-    >
-      <Input
-        v-model:value="imageUrl"
-        placeholder="请输入图片地址"
-        @pressEnter="confirmImage"
-      />
-    </Modal>
+    <!-- Editor Content -->
+    <EditorContent :editor="editor" />
   </div>
 </template>
 
-<style lang="less" scoped>
-@import '@/styles/tiptap-editor.less';
-
-.heading-btn {
-  width: auto !important;
-  padding: 0 8px;
-  font-size: 12px;
+<style>
+.tiptap {
+  outline: none;
+}
+.tiptap p.is-editor-empty:first-child::before {
+  color: oklch(var(--bc) / 0.4);
+  content: attr(data-placeholder);
+  float: left;
+  height: 0;
+  pointer-events: none;
 }
 </style>

@@ -2,322 +2,309 @@
 import { ref, onMounted, computed, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import {
-  Card,
-  Button,
-  Tag,
-  Divider,
-  Spin,
-  Empty,
-  List,
-  ListItem,
-  ListItemMeta,
-  Input,
-  message,
-  Space,
-  Dropdown,
-  Menu,
-  MenuItem,
-} from 'ant-design-vue';
-import {
-  EditOutlined,
-  TeamOutlined,
-  ShareAltOutlined,
-  MoreOutlined,
-  SendOutlined,
-  DeleteOutlined,
-} from '@ant-design/icons-vue';
+  Edit2,
+  Users,
+  Link2,
+  MessageSquare,
+  Clock,
+  Send,
+  MoreHorizontal,
+  Trash2,
+} from 'lucide-vue-next';
 import { useDocumentStore } from '@/stores/document';
+import { useSpaceStore } from '@/stores/space';
+import { useUserStore } from '@/stores/user';
 import * as commentApi from '@/api/comment';
 import type { Comment } from '@/types';
 import dayjs from 'dayjs';
-import { detectContentFormat, tiptapJSONToHTML } from '@/utils/content-converter';
+import relativeTime from 'dayjs/plugin/relativeTime';
+import 'dayjs/locale/zh-cn';
+
+dayjs.extend(relativeTime);
+dayjs.locale('zh-cn');
 
 const route = useRoute();
 const router = useRouter();
 const documentStore = useDocumentStore();
+const spaceStore = useSpaceStore();
+const userStore = useUserStore();
 
 const spaceId = computed(() => route.params.spaceId as string);
 const documentId = computed(() => route.params.documentId as string);
 
-const loading = ref(false);
 const comments = ref<Comment[]>([]);
-const commentsLoading = ref(false);
+const loadingComments = ref(false);
 const newComment = ref('');
 const submittingComment = ref(false);
 
-const accessModeMap = {
-  OPEN_EDIT: { text: '所有人可编辑', color: 'green' },
-  OPEN_READONLY: { text: '所有人可查看', color: 'blue' },
-  WHITELIST_ONLY: { text: '仅白名单可见', color: 'orange' },
-};
+const canEdit = computed(() => {
+  const doc = documentStore.currentDocument;
+  if (!doc) return false;
+  if (doc.owner === userStore.username) return true;
+  if (spaceStore.isSuperAdmin) return true;
+  if (doc.accessMode === 'OPEN_EDIT') return true;
+  return doc.hasSpaceAuth && doc.accessMode !== 'WHITELIST_ONLY';
+});
 
-// 渲染内容（自动处理 HTML 和 JSON 格式）
-const renderedContent = computed(() => {
-  const content = documentStore.currentDocument?.content;
-  if (!content) return '';
-
-  const format = detectContentFormat(content);
-
-  if (format === 'json') {
-    try {
-      const json = JSON.parse(content);
-      return tiptapJSONToHTML(json);
-    } catch {
-      return content;
-    }
-  }
-
-  // HTML 格式直接返回
-  return content;
+const isOwnerOrAdmin = computed(() => {
+  const doc = documentStore.currentDocument;
+  if (!doc) return false;
+  return doc.owner === userStore.username || spaceStore.isSuperAdmin;
 });
 
 onMounted(async () => {
   await loadDocument();
-  await loadComments();
 });
 
 watch(documentId, async () => {
-  if (documentId.value) {
-    await loadDocument();
-    await loadComments();
-  }
+  await loadDocument();
 });
 
 async function loadDocument() {
   if (!documentId.value) return;
 
-  loading.value = true;
   try {
     await documentStore.fetchDocumentById(documentId.value);
-  } finally {
-    loading.value = false;
+    await loadComments();
+  } catch (error) {
+    console.error('Failed to load document:', error);
   }
 }
 
 async function loadComments() {
-  if (!documentId.value) return;
-
-  commentsLoading.value = true;
+  loadingComments.value = true;
   try {
-    const result = await commentApi.getComments(documentId.value) as unknown as { list: Comment[] };
-    comments.value = result.list || [];
-  } catch {
-    comments.value = [];
+    const data = await commentApi.getComments(documentId.value);
+    comments.value = data;
+  } catch (error) {
+    console.error('Failed to load comments:', error);
   } finally {
-    commentsLoading.value = false;
+    loadingComments.value = false;
   }
 }
 
-async function submitComment() {
-  if (!newComment.value.trim()) {
-    message.warning('请输入评论内容');
-    return;
+function goToEdit() {
+  const folderPath = route.params.folderPath;
+  if (folderPath) {
+    router.push({
+      name: 'FolderDocumentEdit',
+      params: { spaceId: spaceId.value, folderPath, documentId: documentId.value },
+    });
+  } else {
+    router.push({
+      name: 'DocumentEdit',
+      params: { spaceId: spaceId.value, documentId: documentId.value },
+    });
   }
+}
 
-  if (!documentStore.currentDocument) return;
+function goToMembers() {
+  router.push({
+    name: 'DocumentMembers',
+    params: { spaceId: spaceId.value, documentId: documentId.value },
+  });
+}
+
+function goToSpaces() {
+  router.push({
+    name: 'DocumentSpaces',
+    params: { spaceId: spaceId.value, documentId: documentId.value },
+  });
+}
+
+async function handleSubmitComment() {
+  if (!newComment.value.trim()) return;
 
   submittingComment.value = true;
   try {
     await commentApi.createComment({
-      docId: documentStore.currentDocument.id,
-      content: newComment.value,
+      docId: documentId.value,
+      content: newComment.value.trim(),
     });
-    message.success('评论成功');
+
     newComment.value = '';
     await loadComments();
-  } catch {
-    // 错误已在拦截器处理
+  } catch (error) {
+    console.error('Failed to submit comment:', error);
   } finally {
     submittingComment.value = false;
   }
 }
 
-async function deleteComment(commentId: string) {
+async function handleDeleteComment(commentId: string) {
+  if (!confirm('确定要删除这条评论吗？')) return;
+
   try {
     await commentApi.deleteComment(commentId);
-    message.success('删除成功');
     await loadComments();
-  } catch {
-    // 错误已在拦截器处理
+  } catch (error) {
+    console.error('Failed to delete comment:', error);
   }
 }
 
-function goToEdit() {
-  router.push(`/space/${spaceId.value}/doc/${documentId.value}/edit`);
-}
-
-function goToMembers() {
-  router.push(`/space/${spaceId.value}/doc/${documentId.value}/members`);
-}
-
-function goToSpaces() {
-  router.push(`/space/${spaceId.value}/doc/${documentId.value}/spaces`);
-}
-
-function formatTime(time: string) {
-  return dayjs(time).format('YYYY-MM-DD HH:mm');
+function getAccessModeBadge(mode: string) {
+  switch (mode) {
+    case 'OPEN_EDIT':
+      return { class: 'badge-success', text: '公开编辑' };
+    case 'OPEN_READONLY':
+      return { class: 'badge-info', text: '公开只读' };
+    default:
+      return { class: 'badge-warning', text: '白名单' };
+  }
 }
 </script>
 
 <template>
-  <div class="document-view">
-    <Spin :spinning="loading">
-      <template v-if="documentStore.currentDocument">
-        <Card class="doc-card">
-          <template #title>
-            <div class="doc-header">
-              <h1 class="doc-title">{{ documentStore.currentDocument.title || '无标题' }}</h1>
-              <Space>
-                <Tag :color="accessModeMap[documentStore.currentDocument.accessMode]?.color">
-                  {{ accessModeMap[documentStore.currentDocument.accessMode]?.text }}
-                </Tag>
-              </Space>
+  <div class="p-6 max-w-4xl mx-auto">
+    <!-- Loading -->
+    <div v-if="documentStore.loading" class="flex justify-center py-20">
+      <span class="loading loading-spinner loading-lg text-primary"></span>
+    </div>
+
+    <template v-else-if="documentStore.currentDocument">
+      <!-- Document Header -->
+      <div class="mb-8">
+        <div class="flex items-start justify-between mb-4">
+          <div>
+            <h1 class="text-3xl font-bold">
+              {{ documentStore.currentDocument.title }}
+            </h1>
+            <div class="flex items-center gap-4 mt-3 text-sm opacity-60">
+              <span>{{ documentStore.currentDocument.owner }}</span>
+              <span class="flex items-center gap-1">
+                <Clock class="w-4 h-4" />
+                {{ dayjs(documentStore.currentDocument.mtime).fromNow() }}
+              </span>
+              <span
+                class="badge badge-sm"
+                :class="getAccessModeBadge(documentStore.currentDocument.accessMode).class"
+              >
+                {{ getAccessModeBadge(documentStore.currentDocument.accessMode).text }}
+              </span>
             </div>
-          </template>
-          <template #extra>
-            <Space>
-              <Button type="primary" @click="goToEdit">
-                <EditOutlined />
-                编辑
-              </Button>
-              <Dropdown>
-                <Button>
-                  <MoreOutlined />
-                </Button>
-                <template #overlay>
-                  <Menu>
-                    <MenuItem key="members" @click="goToMembers">
-                      <TeamOutlined />
-                      成员管理
-                    </MenuItem>
-                    <MenuItem key="spaces" @click="goToSpaces">
-                      <ShareAltOutlined />
-                      空间绑定
-                    </MenuItem>
-                  </Menu>
-                </template>
-              </Dropdown>
-            </Space>
-          </template>
-
-          <div class="doc-meta">
-            <span>作者: {{ documentStore.currentDocument.owner }}</span>
-            <Divider type="vertical" />
-            <span>创建: {{ formatTime(documentStore.currentDocument.ctime) }}</span>
-            <Divider type="vertical" />
-            <span>更新: {{ formatTime(documentStore.currentDocument.mtime) }}</span>
           </div>
 
-          <Divider />
+          <!-- Actions -->
+          <div class="flex items-center gap-2">
+            <button v-if="canEdit" class="btn btn-primary" @click="goToEdit">
+              <Edit2 class="w-4 h-4" />
+              编辑
+            </button>
 
+            <div v-if="isOwnerOrAdmin" class="dropdown dropdown-end">
+              <button tabindex="0" class="btn btn-ghost btn-square">
+                <MoreHorizontal class="w-5 h-5" />
+              </button>
+              <ul tabindex="0" class="dropdown-content z-[1] menu p-2 shadow-lg bg-base-100 rounded-box w-44">
+                <li>
+                  <a @click="goToMembers">
+                    <Users class="w-4 h-4" />
+                    成员管理
+                  </a>
+                </li>
+                <li>
+                  <a @click="goToSpaces">
+                    <Link2 class="w-4 h-4" />
+                    空间绑定
+                  </a>
+                </li>
+              </ul>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Document Content -->
+      <div class="card bg-base-100 shadow-sm mb-8">
+        <div class="card-body">
           <div
-            v-if="renderedContent"
-            class="doc-content"
-            v-html="renderedContent"
-          />
-          <Empty v-else description="暂无内容" />
-        </Card>
+            class="prose prose-sm max-w-none"
+            v-html="documentStore.currentDocument.content || '<p class=\"opacity-50\">暂无内容</p>'"
+          ></div>
+        </div>
+      </div>
 
-        <!-- 评论区 -->
-        <Card title="评论" class="comments-card">
-          <div class="comment-input">
-            <Input.TextArea
-              v-model:value="newComment"
-              :rows="3"
-              placeholder="写下你的评论..."
-            />
-            <Button
-              type="primary"
-              class="mt-sm"
-              :loading="submittingComment"
-              @click="submitComment"
-            >
-              <SendOutlined />
-              发送
-            </Button>
+      <!-- Comments Section -->
+      <div class="card bg-base-100 shadow-sm">
+        <div class="card-body">
+          <div class="flex items-center gap-2 mb-6">
+            <MessageSquare class="w-5 h-5" />
+            <h2 class="text-lg font-bold">评论</h2>
+            <span class="text-sm opacity-50">({{ comments.length }})</span>
           </div>
 
-          <Divider />
+          <!-- Comment Input -->
+          <div class="flex gap-3 mb-6">
+            <div class="avatar placeholder">
+              <div class="bg-primary text-primary-content w-10 rounded-full">
+                <span>{{ userStore.displayName?.charAt(0) || 'U' }}</span>
+              </div>
+            </div>
+            <div class="flex-1">
+              <textarea
+                v-model="newComment"
+                rows="3"
+                placeholder="写下你的评论..."
+                class="textarea textarea-bordered w-full resize-none"
+              ></textarea>
+              <div class="flex justify-end mt-2">
+                <button
+                  class="btn btn-primary btn-sm"
+                  :disabled="submittingComment || !newComment.trim()"
+                  @click="handleSubmitComment"
+                >
+                  <Send class="w-4 h-4" />
+                  发送
+                </button>
+              </div>
+            </div>
+          </div>
 
-          <Spin :spinning="commentsLoading">
-            <List
-              v-if="comments.length > 0"
-              :data-source="comments"
-              item-layout="horizontal"
+          <!-- Comments List -->
+          <div v-if="loadingComments" class="flex justify-center py-8">
+            <span class="loading loading-spinner loading-md text-primary"></span>
+          </div>
+
+          <div v-else-if="comments.length === 0" class="text-center py-8 opacity-50">
+            暂无评论，快来发表第一条评论吧
+          </div>
+
+          <div v-else class="space-y-4">
+            <div
+              v-for="comment in comments"
+              :key="comment.id"
+              class="flex gap-3 p-4 bg-base-200 rounded-xl"
             >
-              <template #renderItem="{ item }">
-                <ListItem>
-                  <template #actions>
-                    <Button
-                      type="text"
-                      size="small"
-                      danger
-                      @click="deleteComment(item.id)"
-                    >
-                      <DeleteOutlined />
-                    </Button>
-                  </template>
-                  <ListItemMeta :description="item.content">
-                    <template #title>
-                      <span>{{ item.username }}</span>
-                      <span class="comment-time">{{ formatTime(item.ctime) }}</span>
-                    </template>
-                  </ListItemMeta>
-                </ListItem>
-              </template>
-            </List>
-            <Empty v-else description="暂无评论" />
-          </Spin>
-        </Card>
-      </template>
-      <Empty v-else description="文档不存在" />
-    </Spin>
+              <div class="avatar placeholder">
+                <div class="bg-neutral text-neutral-content w-10 rounded-full">
+                  <span>{{ comment.username.charAt(0).toUpperCase() }}</span>
+                </div>
+              </div>
+              <div class="flex-1">
+                <div class="flex items-center justify-between">
+                  <div class="flex items-center gap-2">
+                    <span class="font-medium">{{ comment.username }}</span>
+                    <span class="text-xs opacity-50">{{ dayjs(comment.ctime).fromNow() }}</span>
+                  </div>
+                  <button
+                    v-if="comment.username === userStore.username || isOwnerOrAdmin"
+                    class="btn btn-ghost btn-xs btn-square"
+                    @click="handleDeleteComment(comment.documentId)"
+                  >
+                    <Trash2 class="w-4 h-4" />
+                  </button>
+                </div>
+                <p class="mt-2 opacity-80">{{ comment.content }}</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </template>
+
+    <!-- Not Found -->
+    <div v-else class="text-center py-20 opacity-50">
+      文档不存在或已被删除
+    </div>
   </div>
 </template>
-
-<style lang="less" scoped>
-.document-view {
-  padding: 24px;
-  max-width: 900px;
-  margin: 0 auto;
-}
-
-.doc-card {
-  .doc-header {
-    display: flex;
-    align-items: center;
-    gap: 16px;
-
-    .doc-title {
-      font-size: 24px;
-      font-weight: 600;
-      margin: 0;
-    }
-  }
-
-  .doc-meta {
-    color: rgba(0, 0, 0, 0.45);
-    font-size: 13px;
-  }
-
-  .doc-content {
-    min-height: 200px;
-    line-height: 1.8;
-  }
-}
-
-.comments-card {
-  margin-top: 24px;
-
-  .comment-input {
-    margin-bottom: 16px;
-  }
-
-  .comment-time {
-    margin-left: 12px;
-    color: rgba(0, 0, 0, 0.45);
-    font-size: 12px;
-    font-weight: normal;
-  }
-}
-</style>

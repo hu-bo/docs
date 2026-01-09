@@ -1,17 +1,11 @@
-import { ref, computed, onUnmounted, watch } from 'vue';
+import { ref, computed, onBeforeUnmount, watch, type Ref } from 'vue';
+import { HocuspocusProvider, WebSocketStatus } from '@hocuspocus/provider';
 import * as Y from 'yjs';
-import { WebsocketProvider } from 'y-websocket';
-import { Collaboration } from '@tiptap/extension-collaboration';
-import { CollaborationCursor } from '@tiptap/extension-collaboration-cursor';
-import { getCollaborationToken, getWebSocketUrl } from '@/api/collaboration';
-
-export interface CollaborationUser {
-  clientId: number;
-  username: string;
-  name: string;
-  color: string;
-  avatar?: string;
-}
+import { IndexeddbPersistence } from 'y-indexeddb';
+import Collaboration from '@tiptap/extension-collaboration';
+import CollaborationCursor from '@tiptap/extension-collaboration-cursor';
+import type { ConnectionStatus, CollaborationUser } from '@/types';
+import { useCollaborationStore } from '@/stores/collaboration';
 
 export interface UseCollaborationOptions {
   documentId: string;
@@ -22,165 +16,184 @@ export interface UseCollaborationOptions {
   enabled?: boolean;
 }
 
-// 生成随机颜色
-function generateUserColor(): string {
-  const colors = [
-    '#f56a00', '#7265e6', '#ffbf00', '#00a2ae',
-    '#eb2f96', '#52c41a', '#1890ff', '#722ed1',
-  ];
-  return colors[Math.floor(Math.random() * colors.length)];
-}
+export function useCollaboration(options: Ref<UseCollaborationOptions>) {
+  const collaborationStore = useCollaborationStore();
 
-export function useCollaboration(options: UseCollaborationOptions) {
-  const {
-    documentId,
-    username,
-    displayName = username,
-    userColor = generateUserColor(),
-    avatar,
-    enabled = true,
-  } = options;
+  // Yjs document instance
+  const ydoc = new Y.Doc();
 
-  const ydoc = ref<Y.Doc | null>(null);
-  const provider = ref<WebsocketProvider | null>(null);
-  const isConnected = ref(false);
-  const connectionStatus = ref<'connecting' | 'connected' | 'disconnected'>('disconnected');
-  const onlineUsers = ref<CollaborationUser[]>([]);
+  // Local offline cache (optional)
+  let idbPersistence: IndexeddbPersistence | null = null;
+
+  // WebSocket provider
+  const provider = ref<HocuspocusProvider | null>(null);
+  const wsStatus = ref<WebSocketStatus>(WebSocketStatus.Disconnected);
   const error = ref<string | null>(null);
 
-  // 协作扩展配置
-  const collaborationExtensions = computed(() => {
-    if (!enabled || !ydoc.value || !provider.value) {
-      return [];
+  // Connection status
+  const connectionStatus = computed<ConnectionStatus>(() => {
+    switch (wsStatus.value) {
+      case WebSocketStatus.Connected:
+        return 'connected';
+      case WebSocketStatus.Connecting:
+        return 'connecting';
+      default:
+        return 'disconnected';
     }
-
-    return [
-      Collaboration.configure({
-        document: ydoc.value,
-        field: 'default', // Yjs fragment 名称
-      }),
-      CollaborationCursor.configure({
-        provider: provider.value,
-        user: {
-          name: displayName,
-          color: userColor,
-          avatar,
-        },
-      }),
-    ];
   });
 
-  // 初始化协作连接
+  const isConnected = computed(() => connectionStatus.value === 'connected');
+
+  // Online users from awareness
+  const onlineUsers = ref<CollaborationUser[]>([]);
+
+  // Random color generator for cursor
+  function generateColor(): string {
+    const colors = [
+      '#f97316', '#ef4444', '#22c55e', '#3b82f6', '#8b5cf6',
+      '#ec4899', '#14b8a6', '#f59e0b', '#6366f1', '#84cc16'
+    ];
+    return colors[Math.floor(Math.random() * colors.length)];
+  }
+
+  // Connect to collaboration server
   async function connect() {
-    if (!enabled || provider.value) return;
+    if (!options.value.enabled) return;
+
+    // Cleanup old connection
+    disconnect();
 
     try {
-      connectionStatus.value = 'connecting';
       error.value = null;
 
-      // 获取 WebSocket token
-      const { token } = await getCollaborationToken();
+      // Get collaboration token
+      const token = await collaborationStore.fetchWsToken();
+      const wsUrl = collaborationStore.getWebSocketUrl(options.value.documentId, token);
 
-      // 创建 Yjs 文档
-      ydoc.value = new Y.Doc();
+      // Setup local offline cache
+      idbPersistence = new IndexeddbPersistence(`doc.${options.value.documentId}`, ydoc);
 
-      // 创建 WebSocket 连接
-      const wsUrl = getWebSocketUrl(documentId, token);
-      console.log('WebSocket URL:', wsUrl);
-      // use the full websocket URL returned by the server (including path)
-      provider.value = new WebsocketProvider(
-        wsUrl,
-        `doc-${documentId}`,
-        ydoc.value,
-        {
-          params: { token },
-          connect: true,
-        }
-      );
-
-      // 监听连接状态
-      provider.value.on('status', (event: { status: string }) => {
-        isConnected.value = event.status === 'connected';
-        connectionStatus.value = event.status as typeof connectionStatus.value;
+      // Create HocuspocusProvider
+      const p = new HocuspocusProvider({
+        url: wsUrl,
+        name: options.value.documentId,
+        document: ydoc,
+        token,
+        connect: true,
+        onStatus: (event) => {
+          wsStatus.value = event.status;
+          collaborationStore.setConnectionStatus(connectionStatus.value);
+        },
+        onAuthenticationFailed: async () => {
+          // Re-fetch token and reconnect
+          try {
+            const newToken = await collaborationStore.fetchWsToken(true);
+            p.disconnect();
+            // @ts-expect-error - hocuspocus provider token is configurable
+            p.configuration.token = newToken;
+            p.connect();
+          } catch (err) {
+            error.value = 'Authentication failed';
+            console.error('Collaboration auth failed:', err);
+          }
+        },
+        onSynced: () => {
+          // Document synced with server
+          console.log('Document synced');
+        },
+        onAwarenessUpdate: ({ states }) => {
+          // Update online users from awareness
+          const users: CollaborationUser[] = [];
+          states.forEach((state) => {
+            if (state.user) {
+              users.push({
+                username: state.user.name || 'Anonymous',
+                displayName: state.user.displayName,
+                avatar: state.user.avatar,
+                color: state.user.color || generateColor(),
+              });
+            }
+          });
+          onlineUsers.value = users;
+          collaborationStore.updateOnlineUsers(users);
+        },
       });
 
-      // 监听 awareness 变化
-      provider.value.awareness.on('change', () => {
-        updateOnlineUsers();
-      });
-
-      // 设置本地用户信息
-      provider.value.awareness.setLocalStateField('user', {
-        name: displayName,
+      // Set awareness user info
+      const userColor = options.value.userColor || generateColor();
+      p.setAwarenessField('user', {
+        name: options.value.username,
+        displayName: options.value.displayName || options.value.username,
+        avatar: options.value.avatar,
         color: userColor,
-        avatar,
-        username,
       });
 
+      provider.value = p;
+      collaborationStore.setCurrentDocumentId(options.value.documentId);
     } catch (err) {
-      console.error('Failed to connect collaboration:', err);
-      error.value = err instanceof Error ? err.message : '连接失败';
-      connectionStatus.value = 'disconnected';
+      error.value = 'Failed to connect';
+      console.error('Collaboration connect error:', err);
     }
   }
 
-  // 更新在线用户列表
-  function updateOnlineUsers() {
-    if (!provider.value) {
-      onlineUsers.value = [];
-      return;
-    }
-
-    const states = provider.value.awareness.getStates();
-    const users: CollaborationUser[] = [];
-
-    states.forEach((state, clientId) => {
-      if (state.user && clientId !== provider.value?.awareness.clientID) {
-        users.push({
-          clientId,
-          username: state.user.username || state.user.name,
-          name: state.user.name,
-          color: state.user.color,
-          avatar: state.user.avatar,
-        });
-      }
-    });
-
-    onlineUsers.value = users;
-  }
-
-  // 断开连接
+  // Disconnect from collaboration server
   function disconnect() {
     if (provider.value) {
       provider.value.destroy();
       provider.value = null;
     }
-
-    if (ydoc.value) {
-      ydoc.value.destroy();
-      ydoc.value = null;
+    if (idbPersistence) {
+      idbPersistence.destroy();
+      idbPersistence = null;
     }
-
-    isConnected.value = false;
-    connectionStatus.value = 'disconnected';
+    wsStatus.value = WebSocketStatus.Disconnected;
     onlineUsers.value = [];
+    collaborationStore.reset();
   }
 
-  // 组件卸载时清理
-  onUnmounted(() => {
-    disconnect();
+  // Get Tiptap collaboration extensions
+  const collaborationExtensions = computed(() => {
+    if (!provider.value) return [];
+
+    return [
+      Collaboration.configure({
+        document: ydoc,
+      }),
+      CollaborationCursor.configure({
+        provider: provider.value,
+        user: {
+          name: options.value.displayName || options.value.username,
+          color: options.value.userColor || generateColor(),
+        },
+      }),
+    ];
   });
 
-  // 监听 documentId 变化，重新连接
+  // Watch for option changes
   watch(
-    () => options.documentId,
+    () => options.value.documentId,
     (newId, oldId) => {
-      if (newId !== oldId && enabled) {
-        disconnect();
+      if (newId !== oldId && options.value.enabled) {
         connect();
       }
     }
   );
+
+  watch(
+    () => options.value.enabled,
+    (enabled) => {
+      if (enabled) {
+        connect();
+      } else {
+        disconnect();
+      }
+    }
+  );
+
+  // Cleanup on unmount
+  onBeforeUnmount(() => {
+    disconnect();
+  });
 
   return {
     ydoc,

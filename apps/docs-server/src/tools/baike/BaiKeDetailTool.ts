@@ -1,6 +1,6 @@
 import { tool } from '@langchain/core/tools'
 import { z } from 'zod'
-import { getBaiKes } from './api.js'
+import { getBaiKes } from './api'
 
 /**
  * BaiKeDetail 工具：用于获取百科知识库文档的详情内容

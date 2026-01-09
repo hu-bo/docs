@@ -1,6 +1,6 @@
 // import { Router } from 'express'
-// import research from '../../controllers/research/index.js'
-// import permit from '../../middlewares/permit.js'
+// import research from '../../controllers/research/index
+// import permit from '../../middlewares/permit
 
 // const router: Router = Router()
 

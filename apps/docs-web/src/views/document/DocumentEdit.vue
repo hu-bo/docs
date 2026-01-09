@@ -1,28 +1,14 @@
 <script setup lang="ts">
-import { ref, onMounted, computed, watch, onBeforeUnmount } from 'vue';
+import { ref, onMounted, onBeforeUnmount, computed, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
-import {
-  Button,
-  Input,
-  Space,
-  Popconfirm,
-  message,
-  Spin,
-} from 'ant-design-vue';
-import {
-  SaveOutlined,
-  CloseOutlined,
-  DeleteOutlined,
-} from '@ant-design/icons-vue';
-import type { JSONContent } from '@tiptap/vue-3';
-import type { Editor } from '@tiptap/core';
-import TiptapEditor from '@/components/editor/TiptapEditor.vue';
-import CollaborationUsers from '@/components/editor/CollaborationUsers.vue';
+import { Save, X, Trash2, Settings } from 'lucide-vue-next';
 import { useDocumentStore } from '@/stores/document';
 import { useSpaceStore } from '@/stores/space';
 import { useUserStore } from '@/stores/user';
 import { useCollaboration } from '@/composables/useCollaboration';
-import { parseContent, serializeContent, createEmptyDoc } from '@/utils/content-converter';
+import TiptapEditor from '@/components/editor/TiptapEditor.vue';
+import CollaborationUsers from '@/components/editor/CollaborationUsers.vue';
+import type { AccessMode } from '@/types';
 
 const route = useRoute();
 const router = useRouter();
@@ -32,228 +18,270 @@ const userStore = useUserStore();
 
 const spaceId = computed(() => route.params.spaceId as string);
 const documentId = computed(() => route.params.documentId as string);
-const isNew = computed(() => documentId.value === 'new');
 
-const loading = ref(false);
-const saving = ref(false);
 const title = ref('');
-const content = ref<JSONContent>(createEmptyDoc());
+const content = ref('');
+const accessMode = ref<AccessMode>('OPEN_EDIT');
+const saving = ref(false);
+const deleting = ref(false);
+const showSettingsModal = ref(false);
+const hasChanges = ref(false);
 
-// 编辑器引用
-const editorRef = ref<InstanceType<typeof TiptapEditor> | null>(null);
+const collabOptions = computed(() => ({
+  documentId: documentId.value,
+  username: userStore.username,
+  displayName: userStore.displayName,
+  avatar: userStore.avatar,
+  enabled: true,
+}));
 
-// 协作功能（仅对已有文档启用）
-const collaboration = computed(() => {
-  if (isNew.value) return null;
-
-  return useCollaboration({
-    documentId: documentId.value,
-    username: userStore.username || 'anonymous',
-    displayName: userStore.displayName || userStore.username || '匿名用户',
-    enabled: !isNew.value,
-  });
-});
-
-// 协作扩展
-const collaborationExtensions = computed(() => {
-  return collaboration.value?.collaborationExtensions.value || [];
-});
-
-// 在线用户
-const onlineUsers = computed(() => collaboration.value?.onlineUsers.value || []);
-const connectionStatus = computed(() => collaboration.value?.connectionStatus.value || 'disconnected');
+const {
+  isConnected,
+  connectionStatus,
+  onlineUsers,
+  collaborationExtensions,
+  connect,
+  disconnect,
+} = useCollaboration(collabOptions);
 
 onMounted(async () => {
-  if (!isNew.value) {
-    await loadDocument();
-    // 连接协作
-    collaboration.value?.connect();
-  }
+  await loadDocument();
+  await connect();
+});
+
+onBeforeUnmount(() => {
+  disconnect();
 });
 
 watch(documentId, async (newId, oldId) => {
   if (newId !== oldId) {
-    // 断开旧连接
-    collaboration.value?.disconnect();
-
-    if (!isNew.value) {
-      await loadDocument();
-      // 重新连接
-      collaboration.value?.connect();
-    } else {
-      title.value = '';
-      content.value = createEmptyDoc();
-    }
+    await loadDocument();
+    disconnect();
+    await connect();
   }
-});
-
-onBeforeUnmount(() => {
-  collaboration.value?.disconnect();
 });
 
 async function loadDocument() {
-  loading.value = true;
+  if (!documentId.value) return;
+
   try {
-    await documentStore.fetchDocumentById(documentId.value);
-    if (documentStore.currentDocument) {
-      title.value = documentStore.currentDocument.title;
-      // 解析内容（自动检测 HTML 或 JSON 格式）
-      content.value = parseContent(documentStore.currentDocument.content || '');
-    }
-  } finally {
-    loading.value = false;
+    const doc = await documentStore.fetchDocumentById(documentId.value);
+    title.value = doc.title;
+    content.value = doc.content || '';
+    accessMode.value = doc.accessMode;
+    hasChanges.value = false;
+  } catch (error) {
+    console.error('Failed to load document:', error);
   }
+}
+
+function handleContentUpdate(newContent: string) {
+  content.value = newContent;
+  hasChanges.value = true;
+}
+
+function handleTitleInput() {
+  hasChanges.value = true;
 }
 
 async function handleSave() {
   if (!title.value.trim()) {
-    message.warning('请输入标题');
+    alert('请输入文档标题');
     return;
   }
 
-  // 获取编辑器内容
-  const editor = editorRef.value?.editor;
-  const jsonContent = editor?.getJSON() || content.value;
-
   saving.value = true;
   try {
-    if (isNew.value) {
-      if (!spaceStore.currentSpace) {
-        message.error('空间信息加载失败');
-        return;
-      }
-      const doc = await documentStore.createDocument({
-        spaceId: spaceStore.currentSpace.id,
-        title: title.value,
-        content: serializeContent(jsonContent),
-      });
-      message.success('创建成功');
-      router.replace(`/space/${spaceId.value}/doc/${doc.documentId}`);
-    } else {
-      await documentStore.updateDocument(documentId.value, {
-        title: title.value,
-        content: serializeContent(jsonContent),
-      });
-      message.success('保存成功');
-    }
-  } catch {
-    // 错误已在拦截器处理
+    await documentStore.updateDocument(documentId.value, {
+      title: title.value.trim(),
+      content: content.value,
+      accessMode: accessMode.value,
+    });
+
+    hasChanges.value = false;
+    await documentStore.fetchDocumentTree(spaceId.value);
+  } catch (error) {
+    console.error('Failed to save document:', error);
+    alert('保存失败，请重试');
   } finally {
     saving.value = false;
   }
 }
 
-function handleCancel() {
-  if (isNew.value) {
-    router.push(`/space/${spaceId.value}`);
-  } else {
-    router.push(`/space/${spaceId.value}/doc/${documentId.value}`);
-  }
-}
-
 async function handleDelete() {
-  if (isNew.value) return;
+  if (!confirm('确定要删除这个文档吗？此操作不可撤销。')) return;
 
+  deleting.value = true;
   try {
     await documentStore.deleteDocument(documentId.value);
-    message.success('删除成功');
-    router.push(`/space/${spaceId.value}`);
-  } catch {
-    // 错误已在拦截器处理
+    await documentStore.fetchDocumentTree(spaceId.value);
+    router.push({ name: 'SpaceHome', params: { spaceId: spaceId.value } });
+  } catch (error) {
+    console.error('Failed to delete document:', error);
+    alert('删除失败，请重试');
+  } finally {
+    deleting.value = false;
   }
 }
 
-function onEditorReady(_editor: Editor) {
-  // 编辑器就绪回调
+function handleCancel() {
+  if (hasChanges.value && !confirm('有未保存的更改，确定要离开吗？')) {
+    return;
+  }
+
+  const folderPath = route.params.folderPath;
+  if (folderPath) {
+    router.push({
+      name: 'FolderDocumentView',
+      params: { spaceId: spaceId.value, folderPath, documentId: documentId.value },
+    });
+  } else {
+    router.push({
+      name: 'DocumentView',
+      params: { spaceId: spaceId.value, documentId: documentId.value },
+    });
+  }
+}
+
+function saveSettings() {
+  hasChanges.value = true;
+  showSettingsModal.value = false;
 }
 </script>
 
 <template>
-  <div class="document-edit">
-    <Spin :spinning="loading">
-      <div class="edit-header">
-        <Input
-          v-model:value="title"
-          class="title-input"
-          placeholder="请输入标题"
-          :bordered="false"
-        />
-        <Space>
-          <!-- 协作用户状态（仅非新建文档显示） -->
-          <CollaborationUsers
-            v-if="!isNew"
-            :users="onlineUsers"
-            :connection-status="connectionStatus"
-          />
+  <div class="min-h-[calc(100vh-64px)] bg-base-200">
+    <!-- Toolbar -->
+    <div class="sticky top-16 z-40 bg-base-100 border-b border-base-300 px-6 py-3">
+      <div class="max-w-4xl mx-auto flex items-center justify-between">
+        <!-- Left: Connection Status & Online Users -->
+        <div class="flex items-center gap-4">
+          <div class="flex items-center gap-2">
+            <div
+              class="w-2 h-2 rounded-full"
+              :class="{
+                'bg-success': isConnected,
+                'bg-warning': connectionStatus === 'connecting',
+                'bg-error': connectionStatus === 'disconnected',
+              }"
+            ></div>
+            <span class="text-xs opacity-60">
+              {{ isConnected ? '已连接' : connectionStatus === 'connecting' ? '连接中...' : '未连接' }}
+            </span>
+          </div>
 
-          <Button type="primary" :loading="saving" @click="handleSave">
-            <SaveOutlined />
-            保存
-          </Button>
-          <Button @click="handleCancel">
-            <CloseOutlined />
-            取消
-          </Button>
-          <Popconfirm
-            v-if="!isNew"
-            title="确定要删除此文档吗？"
-            ok-text="确定"
-            cancel-text="取消"
-            @confirm="handleDelete"
+          <CollaborationUsers v-if="onlineUsers.length > 0" :users="onlineUsers" />
+        </div>
+
+        <!-- Right: Actions -->
+        <div class="flex items-center gap-2">
+          <button
+            class="btn btn-ghost btn-sm btn-square"
+            title="文档设置"
+            @click="showSettingsModal = true"
           >
-            <Button danger>
-              <DeleteOutlined />
-              删除
-            </Button>
-          </Popconfirm>
-        </Space>
-      </div>
+            <Settings class="w-5 h-5" />
+          </button>
 
-      <div class="edit-content">
-        <TiptapEditor
-          ref="editorRef"
-          :model-value="content"
-          :extensions="collaborationExtensions"
-          @update:model-value="content = $event"
-          @ready="onEditorReady"
-        />
+          <button class="btn btn-ghost btn-sm" @click="handleCancel">
+            <X class="w-4 h-4" />
+            取消
+          </button>
+
+          <button class="btn btn-primary btn-sm" :disabled="saving" @click="handleSave">
+            <span v-if="saving" class="loading loading-spinner loading-sm"></span>
+            <Save v-else class="w-4 h-4" />
+            保存
+          </button>
+        </div>
       </div>
-    </Spin>
+    </div>
+
+    <!-- Editor Area -->
+    <div class="max-w-4xl mx-auto py-8 px-6">
+      <input
+        v-model="title"
+        type="text"
+        placeholder="无标题文档"
+        class="input input-ghost w-full text-4xl font-bold p-0 mb-6 focus:outline-none"
+        @input="handleTitleInput"
+      />
+
+      <TiptapEditor
+        :model-value="content"
+        :collaboration-extensions="collaborationExtensions"
+        placeholder="开始编写内容..."
+        @update:model-value="handleContentUpdate"
+      />
+    </div>
+
+    <!-- Settings Modal -->
+    <dialog class="modal" :class="{ 'modal-open': showSettingsModal }">
+      <div class="modal-box">
+        <h3 class="font-bold text-lg">文档设置</h3>
+
+        <div class="py-4 space-y-4">
+          <!-- Access Mode -->
+          <div class="form-control">
+            <label class="label">
+              <span class="label-text">访问模式</span>
+            </label>
+            <div class="space-y-2">
+              <label
+                class="label cursor-pointer justify-start gap-4 border rounded-lg p-4"
+                :class="{ 'border-success bg-success/10': accessMode === 'OPEN_EDIT' }"
+              >
+                <input type="radio" v-model="accessMode" value="OPEN_EDIT" class="radio radio-success" />
+                <div>
+                  <p class="font-medium">公开编辑</p>
+                  <p class="text-xs opacity-60">所有人可查看和编辑</p>
+                </div>
+              </label>
+
+              <label
+                class="label cursor-pointer justify-start gap-4 border rounded-lg p-4"
+                :class="{ 'border-info bg-info/10': accessMode === 'OPEN_READONLY' }"
+              >
+                <input type="radio" v-model="accessMode" value="OPEN_READONLY" class="radio radio-info" />
+                <div>
+                  <p class="font-medium">公开只读</p>
+                  <p class="text-xs opacity-60">所有人可查看，指定用户可编辑</p>
+                </div>
+              </label>
+
+              <label
+                class="label cursor-pointer justify-start gap-4 border rounded-lg p-4"
+                :class="{ 'border-warning bg-warning/10': accessMode === 'WHITELIST_ONLY' }"
+              >
+                <input type="radio" v-model="accessMode" value="WHITELIST_ONLY" class="radio radio-warning" />
+                <div>
+                  <p class="font-medium">白名单</p>
+                  <p class="text-xs opacity-60">仅白名单用户可访问</p>
+                </div>
+              </label>
+            </div>
+          </div>
+
+          <!-- Delete Button -->
+          <div class="divider"></div>
+          <button
+            class="btn btn-ghost btn-sm text-error"
+            :disabled="deleting"
+            @click="handleDelete"
+          >
+            <Trash2 class="w-4 h-4" />
+            {{ deleting ? '删除中...' : '删除文档' }}
+          </button>
+        </div>
+
+        <div class="modal-action">
+          <button class="btn" @click="showSettingsModal = false">取消</button>
+          <button class="btn btn-primary" @click="saveSettings">确定</button>
+        </div>
+      </div>
+      <form method="dialog" class="modal-backdrop">
+        <button @click="showSettingsModal = false">close</button>
+      </form>
+    </dialog>
   </div>
 </template>
-
-<style lang="less" scoped>
-.document-edit {
-  height: calc(100vh - 64px);
-  display: flex;
-  flex-direction: column;
-  background: #fff;
-}
-
-.edit-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 16px 24px;
-  border-bottom: 1px solid #f0f0f0;
-
-  .title-input {
-    flex: 1;
-    font-size: 24px;
-    font-weight: 600;
-    margin-right: 24px;
-
-    :deep(input) {
-      font-size: 24px;
-      font-weight: 600;
-    }
-  }
-}
-
-.edit-content {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-}
-</style>

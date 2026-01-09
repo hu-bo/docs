@@ -1,6 +1,6 @@
 {
   "kind": "collectionType",
-  "collectionName": "space_depts",
+  "collectionName": "space_dept",
   "info": {
     "singularName": "space-dept",
     "pluralName": "space-depts",
@@ -12,10 +12,10 @@
   "pluginOptions": {},
   "attributes": {
     "space_id": {
-      "type": "biginteger"
+      "type": "string"
     },
     "dept_id": {
-      "type": "biginteger"
+      "type": "string"
     },
     "ctime": {
       "type": "datetime"

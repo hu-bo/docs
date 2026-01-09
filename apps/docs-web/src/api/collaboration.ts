@@ -1,21 +1,14 @@
 import request from './request';
 
-interface WsTokenResponse {
-  token: string;
+export function getCollaborationToken() {
+  return request.post<any, { token: string }>('/collaboration/token');
 }
 
-/**
- * 获取 WebSocket 认证 token
- */
-export function getCollaborationToken(): Promise<WsTokenResponse> {
-  return request.post<WsTokenResponse>('/collaboration/token');
-}
-
-/**
- * 获取 WebSocket 连接 URL
- */
-export function getWebSocketUrl(documentId: string, token: string): string {
+export function getWebSocketUrl(documentId: string, token: string) {
+  // Use relative path if proxy is set up for WS, or absolute URL if needed.
+  // Based on vite.config.ts, /ws/ points to ws://127.0.0.1:3002
+  // We can use the current host but replace protocol with ws/wss and path with /ws
   const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-  const host = "127.0.0.1:3002"; // Adjusted for local development
-  return `${protocol}//${host}/ws/collab?doc=doc-${documentId}&token=${token}`;
+  const host = window.location.host;
+  return `${protocol}//${host}/ws/collab/${documentId}?token=${token}`;
 }

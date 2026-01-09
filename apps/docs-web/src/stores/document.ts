@@ -1,77 +1,56 @@
 import { defineStore } from 'pinia';
 import { ref } from 'vue';
-import * as docApi from '@/api/document';
-import type { Doc, Folder, TreeNode, PaginatedData, CreateDocForm, RecentDoc } from '@/types';
+import type { Doc, RecentDoc, TreeNode, DocUserAcl, DocSpaceBinding } from '@/types';
+import * as documentApi from '@/api/document';
 
 export const useDocumentStore = defineStore('document', () => {
-  // 状态
+  // State
   const documentTree = ref<TreeNode[]>([]);
   const currentDocument = ref<Doc | null>(null);
   const documents = ref<Doc[]>([]);
   const documentsTotal = ref(0);
   const recentDocuments = ref<RecentDoc[]>([]);
+  const documentMembers = ref<DocUserAcl[]>([]);
+  const documentSpaces = ref<DocSpaceBinding[]>([]);
   const loading = ref(false);
 
-  // 构建树节点
-  function buildTreeNodes(folders: Folder[], docs: Doc[]): TreeNode[] {
-    const nodes: TreeNode[] = [];
-
-    // 添加文件夹节点
-    folders.forEach(folder => {
-      nodes.push({
-        key: `folder-${folder.documentId}`,
-        title: folder.name,
-        type: 'folder',
-        data: folder,
-        children: [],
-        isLeaf: false,
-      });
-    });
-
-    // 添加文档节点
-    docs.forEach(doc => {
-      nodes.push({
-        key: `doc-${doc.documentId}`,
-        title: doc.title,
-        type: 'doc',
-        data: doc,
-        isLeaf: true,
-      });
-    });
-
-    return nodes;
-  }
-
-  // 操作
-  async function fetchDocumentTree(spaceId: string, folderId = '0') {
-    loading.value = true;
+  // Actions
+  async function fetchDocumentTree(spaceId: string, folderId?: string) {
     try {
-      const result = await docApi.getDocumentTree({ spaceId, folderId }) as unknown as { folders: Folder[]; docs: Doc[] };
-      const nodes = buildTreeNodes(result.folders, result.docs);
-
-      if (folderId === '0') {
-        // 根目录
-        documentTree.value = nodes;
-      }
-
-      return nodes;
-    } finally {
-      loading.value = false;
+      const data = await documentApi.getDocumentTree({ spaceId, folderId });
+      documentTree.value = data;
+      return data;
+    } catch (error) {
+      console.error('Failed to fetch document tree:', error);
+      throw error;
     }
   }
 
-  async function loadTreeNodeChildren(spaceId: string, folderId: string): Promise<TreeNode[]> {
-    const result = await docApi.getDocumentTree({ spaceId, folderId }) as unknown as { folders: Folder[]; docs: Doc[] };
-    return buildTreeNodes(result.folders, result.docs);
+  async function loadTreeNodeChildren(spaceId: string, folderId: string) {
+    try {
+      const data = await documentApi.getDocumentTree({ spaceId, folderId });
+      return data;
+    } catch (error) {
+      console.error('Failed to load tree node children:', error);
+      throw error;
+    }
   }
 
-  async function fetchDocuments(spaceId: string, folderId?: string, page = 1, pageSize = 20) {
+  async function fetchDocuments(params: {
+    spaceId: string;
+    folderId?: string;
+    page?: number;
+    pageSize?: number
+  }) {
     loading.value = true;
     try {
-      const result = await docApi.getDocuments({ spaceId, folderId, page, pageSize }) as unknown as PaginatedData<Doc>;
-      documents.value = result.list;
-      documentsTotal.value = result.total;
-      return result;
+      const data = await documentApi.getDocuments(params);
+      documents.value = data.list;
+      documentsTotal.value = data.total;
+      return data;
+    } catch (error) {
+      console.error('Failed to fetch documents:', error);
+      throw error;
     } finally {
       loading.value = false;
     }
@@ -80,74 +59,164 @@ export const useDocumentStore = defineStore('document', () => {
   async function fetchDocumentById(documentId: string) {
     loading.value = true;
     try {
-      currentDocument.value = await docApi.getDocumentById(documentId) as unknown as Doc;
-      return currentDocument.value;
+      const data = await documentApi.getDocumentById(documentId);
+      currentDocument.value = data;
+      return data;
     } catch (error) {
-      // 请求失败时（包括权限不足403），清空旧的文档数据，防止显示缓存内容
-      currentDocument.value = null;
+      console.error('Failed to fetch document:', error);
       throw error;
     } finally {
       loading.value = false;
     }
   }
 
-  async function createDocument(data: CreateDocForm) {
-    const result = await docApi.createDocument(data) as unknown as Doc;
-    documents.value.unshift(result);
-    return result;
+  async function fetchRecentDocuments(params?: { limit?: number }) {
+    try {
+      const data = await documentApi.getRecentDocuments(params);
+      recentDocuments.value = data;
+      return data;
+    } catch (error) {
+      console.error('Failed to fetch recent documents:', error);
+      throw error;
+    }
   }
 
-  async function updateDocument(documentId: string, data: Partial<CreateDocForm>) {
-    const result = await docApi.updateDocument(documentId, data) as unknown as Doc;
-    if (currentDocument.value?.documentId === documentId) {
-      currentDocument.value = result;
+  async function createDocument(data: Partial<Doc>) {
+    try {
+      const newDoc = await documentApi.createDocument(data);
+      return newDoc;
+    } catch (error) {
+      console.error('Failed to create document:', error);
+      throw error;
     }
-    const index = documents.value.findIndex(d => d.documentId === documentId);
-    if (index !== -1) {
-      documents.value[index] = result;
+  }
+
+  async function updateDocument(documentId: string, data: Partial<Doc>) {
+    try {
+      const updated = await documentApi.updateDocument(documentId, data);
+      if (currentDocument.value?.documentId === documentId) {
+        currentDocument.value = updated;
+      }
+      return updated;
+    } catch (error) {
+      console.error('Failed to update document:', error);
+      throw error;
     }
-    return result;
   }
 
   async function moveDocument(documentId: string, folderId: string) {
-    const result = await docApi.moveDocument(documentId, folderId) as unknown as Doc;
-    if (currentDocument.value?.documentId === documentId) {
-      currentDocument.value = result;
+    try {
+      await documentApi.moveDocument(documentId, folderId);
+    } catch (error) {
+      console.error('Failed to move document:', error);
+      throw error;
     }
-    return result;
   }
 
   async function deleteDocument(documentId: string) {
-    await docApi.deleteDocument(documentId);
-    documents.value = documents.value.filter(d => d.documentId !== documentId);
-    if (currentDocument.value?.documentId === documentId) {
-      currentDocument.value = null;
+    try {
+      await documentApi.deleteDocument(documentId);
+      documents.value = documents.value.filter(d => d.documentId !== documentId);
+      if (currentDocument.value?.documentId === documentId) {
+        currentDocument.value = null;
+      }
+    } catch (error) {
+      console.error('Failed to delete document:', error);
+      throw error;
     }
   }
 
-  function clearCurrentDocument() {
+  // Document Members
+  async function fetchDocMembers(documentId: string) {
+    try {
+      const data = await documentApi.getDocMembers(documentId);
+      documentMembers.value = data;
+      return data;
+    } catch (error) {
+      console.error('Failed to fetch document members:', error);
+      throw error;
+    }
+  }
+
+  async function addDocMembers(documentId: string, members: any[]) {
+    try {
+      await documentApi.addDocMembers(documentId, members);
+      await fetchDocMembers(documentId);
+    } catch (error) {
+      console.error('Failed to add document members:', error);
+      throw error;
+    }
+  }
+
+  async function updateDocMember(documentId: string, username: string, data: any) {
+    try {
+      await documentApi.updateDocMember(documentId, username, data);
+      await fetchDocMembers(documentId);
+    } catch (error) {
+      console.error('Failed to update document member:', error);
+      throw error;
+    }
+  }
+
+  async function removeDocMember(documentId: string, username: string) {
+    try {
+      await documentApi.removeDocMembers(documentId, username);
+      documentMembers.value = documentMembers.value.filter(m => m.username !== username);
+    } catch (error) {
+      console.error('Failed to remove document member:', error);
+      throw error;
+    }
+  }
+
+  // Document Spaces
+  async function fetchDocSpaces(documentId: string) {
+    try {
+      const data = await documentApi.getDocSpaces(documentId);
+      documentSpaces.value = data;
+      return data;
+    } catch (error) {
+      console.error('Failed to fetch document spaces:', error);
+      throw error;
+    }
+  }
+
+  async function bindDocToSpace(documentId: string, data: any) {
+    try {
+      await documentApi.bindDocToSpace(documentId, data);
+      await fetchDocSpaces(documentId);
+    } catch (error) {
+      console.error('Failed to bind document to space:', error);
+      throw error;
+    }
+  }
+
+  async function unbindDocFromSpace(documentId: string, spaceId: string) {
+    try {
+      await documentApi.unbindDocFromSpace(documentId, spaceId);
+      documentSpaces.value = documentSpaces.value.filter(s => s.spaceId !== spaceId);
+    } catch (error) {
+      console.error('Failed to unbind document from space:', error);
+      throw error;
+    }
+  }
+
+  function resetCurrentDocument() {
     currentDocument.value = null;
-  }
-
-  function clearDocumentTree() {
-    documentTree.value = [];
-  }
-
-  async function fetchRecentDocuments(spaceId?: string, limit = 6) {
-    const result = await docApi.getRecentDocuments({ spaceId, limit });
-    recentDocuments.value = result as unknown as RecentDoc[];
-    return recentDocuments.value;
+    documentMembers.value = [];
+    documentSpaces.value = [];
   }
 
   return {
-    // 状态
+    // State
     documentTree,
     currentDocument,
     documents,
     documentsTotal,
     recentDocuments,
+    documentMembers,
+    documentSpaces,
     loading,
-    // 操作
+    // Actions
     fetchDocumentTree,
     loadTreeNodeChildren,
     fetchDocuments,
@@ -157,7 +226,13 @@ export const useDocumentStore = defineStore('document', () => {
     updateDocument,
     moveDocument,
     deleteDocument,
-    clearCurrentDocument,
-    clearDocumentTree,
+    fetchDocMembers,
+    addDocMembers,
+    updateDocMember,
+    removeDocMember,
+    fetchDocSpaces,
+    bindDocToSpace,
+    unbindDocFromSpace,
+    resetCurrentDocument,
   };
 });

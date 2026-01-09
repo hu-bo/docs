@@ -2,7 +2,6 @@ import 'reflect-metadata'
 import { DataSource, DataSourceOptions } from 'typeorm'
 import dbConfig from './dbConfig'
 import { createBiliConfig } from '../utils/biliConfig'
-import { ResearchMessage } from '../entities/ResearchMessage'
 
 let appDataSource: DataSource
 
@@ -19,14 +18,13 @@ export const init = async (): Promise<void> => {
         throw new Error('Remote DB config is missing or invalid')
     }
     const orm = (process.env.NODE_ENV === 'local' && dbEnv) || { ...dbEnv, ...remoteDB }
-    console.log(process.env.NODE_ENV)
-    // 添加 deepagents 特定的 entity
-    const ormWithEntities = {
-        ...orm,
-        entities: [...(Array.isArray(orm.entities) ? orm.entities : []), ResearchMessage]
-    }
 
-    appDataSource = new DataSource(ormWithEntities)
+    appDataSource = new DataSource({
+        ...orm,
+        entities: [
+            ...(Array.isArray(orm.entities) ? orm.entities : [])
+        ]
+    })
 }
 
 export function getDataSource(): DataSource {

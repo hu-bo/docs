@@ -1,6 +1,6 @@
 {
   "kind": "collectionType",
-  "collectionName": "comments",
+  "collectionName": "comment",
   "info": {
     "singularName": "comment",
     "pluralName": "comments",
@@ -12,11 +12,11 @@
   },
   "attributes": {
     "docId": {
-      "type": "biginteger",
+      "type": "string",
       "required": true
     },
     "parentId": {
-      "type": "biginteger",
+      "type": "string",
       "default": "0"
     },
     "username": {
@@ -26,10 +26,6 @@
     },
     "content": {
       "type": "text"
-    },
-    "isDeleted": {
-      "type": "boolean",
-      "default": false
     },
     "ctime": {
       "type": "datetime"

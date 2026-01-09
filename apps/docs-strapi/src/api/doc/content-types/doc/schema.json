@@ -1,6 +1,6 @@
 {
   "kind": "collectionType",
-  "collectionName": "docs",
+  "collectionName": "doc",
   "info": {
     "singularName": "doc",
     "pluralName": "docs",

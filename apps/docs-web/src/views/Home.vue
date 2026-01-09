@@ -1,356 +1,247 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue';
-import { useRouter } from 'vue-router';
+import { ref, onMounted, computed, type Component } from 'vue';
+import dayjs from 'dayjs';
+import relativeTime from 'dayjs/plugin/relativeTime';
+import 'dayjs/locale/zh-cn';
+
 import {
-  Row,
-  Col,
-  Card,
-  Button,
-  Modal,
-  Form,
-  FormItem,
-  Input,
-  Empty,
-  Spin,
-  message,
-} from 'ant-design-vue';
-import {
-  PlusOutlined,
-  AppstoreOutlined,
-  FileTextOutlined,
-  UserOutlined,
-} from '@ant-design/icons-vue';
-import MainLayout from '@/layouts/MainLayout.vue';
+  FolderKanban,
+  Plus,
+  Hash,
+  Laptop,
+  Video,
+  Users,
+  Ship,
+  Cpu,
+  PlayCircle,
+  Radio,
+  Target,
+  TrendingUp,
+  Zap,
+  ShieldCheck,
+  Globe,
+  Briefcase
+} from 'lucide-vue-next';
+import SpaceCard, { type SpaceItem } from '@/components/SpaceCard.vue';
+import DocumentCard, { type DocumentItem } from '@/components/DocumentCard.vue';
+import CommunityCard, { type CommunityItem } from '@/components/CommunityCard.vue';
+import CreateSpaceModal from '@/components/CreateSpaceModal.vue';
 import { useSpaceStore } from '@/stores/space';
 import { useDocumentStore } from '@/stores/document';
-import type { Space, RecentDoc } from '@/types';
-import { SPACE_TYPE } from '@/types';
-import dayjs from 'dayjs';
 
-const router = useRouter();
+dayjs.extend(relativeTime);
+dayjs.locale('zh-cn');
+
 const spaceStore = useSpaceStore();
 const documentStore = useDocumentStore();
 
-const recentSpaces = ref<Space[]>([]);
-const recentDocs = ref<RecentDoc[]>([]);
-const loading = ref(false);
-const docsLoading = ref(false);
-const personalSpaceLoading = ref(false);
-
-// 创建空间弹窗
-const createModalVisible = ref(false);
-const createForm = ref({
-  name: '',
-  codeName: '',
-});
-const creating = ref(false);
+const activeTab = ref<'created' | 'shared'>('created');
+const showCreateModal = ref(false);
 
 onMounted(async () => {
-  await Promise.all([loadPersonalSpace(), loadRecentSpaces(), loadRecentDocs()]);
+  await Promise.all([
+    spaceStore.fetchJoinedSpaces({ page: 1, pageSize: 10 }),
+    spaceStore.fetchSpaces({ page: 1, pageSize: 20 }),
+    documentStore.fetchRecentDocuments({ limit: 12 }),
+  ]);
 });
 
-async function loadPersonalSpace() {
-  personalSpaceLoading.value = true;
-  try {
-    await spaceStore.fetchPersonalSpace();
-  } finally {
-    personalSpaceLoading.value = false;
-  }
+const ICONS: Component[] = [Laptop, Video, Users, Ship, Cpu, PlayCircle, Radio, Target, TrendingUp, Zap, ShieldCheck, Globe, Briefcase];
+const COLORS = [
+  { bg: 'bg-neutral/10', icon: 'text-neutral', theme: 'gray' },
+  { bg: 'bg-info/10', icon: 'text-info', theme: 'blue' },
+  { bg: 'bg-secondary/10', icon: 'text-secondary', theme: 'purple' },
+  { bg: 'bg-success/10', icon: 'text-success', theme: 'emerald' },
+  { bg: 'bg-warning/10', icon: 'text-warning', theme: 'orange' },
+  { bg: 'bg-error/10', icon: 'text-error', theme: 'pink' },
+  { bg: 'bg-accent/10', icon: 'text-accent', theme: 'cyan' },
+  { bg: 'bg-warning/10', icon: 'text-warning', theme: 'amber' },
+  { bg: 'bg-primary/10', icon: 'text-primary', theme: 'indigo' },
+];
+
+function getVisuals(id: number) {
+  const hash = id.toString().split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
+  const icon = ICONS[hash % ICONS.length];
+  const color = COLORS[hash % COLORS.length];
+  return { icon, color };
 }
 
-async function loadRecentSpaces() {
-  loading.value = true;
-  try {
-    await spaceStore.fetchSpaces(1, 8);
-    // 只显示公共空间
-    recentSpaces.value = spaceStore.spaces.filter(s => s.space_type === SPACE_TYPE.PUBLIC);
-  } finally {
-    loading.value = false;
-  }
-}
+const mySpaces = computed<SpaceItem[]>(() => {
+  return spaceStore.joinedSpaces.map(space => {
+    const visuals = getVisuals(space.id);
+    return {
+      id: space.documentId,
+      title: space.name,
+      folderCount: 0,
+      fileCount: 0,
+      time: dayjs(space.mtime).fromNow(),
+      icon: visuals.icon,
+      bgColor: visuals.color.bg,
+      iconColor: visuals.color.icon,
+    };
+  });
+});
 
-async function loadRecentDocs() {
-  docsLoading.value = true;
-  try {
-    recentDocs.value = await documentStore.fetchRecentDocuments(undefined, 8);
-  } finally {
-    docsLoading.value = false;
-  }
-}
+const myDocuments = computed<DocumentItem[]>(() => {
+  return documentStore.recentDocuments.map(doc => ({
+    id: doc.documentId,
+    title: doc.title,
+    path: doc.spaceName || '个人空间',
+    tags: [],
+    time: dayjs(doc.lastViewedAt || doc.mtime).fromNow(),
+  }));
+});
 
-function openCreateModal() {
-  createForm.value = { name: '', codeName: '' };
-  createModalVisible.value = true;
-}
+const communityItems = computed<CommunityItem[]>(() => {
+  return spaceStore.publicSpaces.slice(0, 8).map(space => {
+    const visuals = getVisuals(space.id);
+    return {
+      id: space.documentId,
+      title: space.name,
+      count: 0,
+      icon: visuals.icon,
+      themeColor: visuals.color.theme,
+    };
+  });
+});
 
-async function handleCreateSpace() {
-  if (!createForm.value.name || !createForm.value.codeName) {
-    message.warning('请填写完整信息');
-    return;
-  }
-
-  creating.value = true;
-  try {
-    const space = await spaceStore.createSpace(createForm.value);
-    message.success('创建成功');
-    createModalVisible.value = false;
-    router.push(`/space/${space.documentId}`);
-  } catch {
-    // 错误已在拦截器处理
-  } finally {
-    creating.value = false;
-  }
-}
-
-function goToSpace(space: Space) {
-  router.push(`/space/${space.documentId}`);
-}
-
-function goToDoc(doc: RecentDoc) {
-  router.push(`/space/${doc.spaceId}/doc/${doc.documentId}`);
-}
-
-function formatTime(time: string) {
-  return dayjs(time).format('MM-DD HH:mm');
+async function handleCreateSuccess() {
+  showCreateModal.value = false;
+  await Promise.all([
+    spaceStore.fetchJoinedSpaces({ page: 1, pageSize: 10 }),
+    spaceStore.fetchSpaces({ page: 1, pageSize: 20 }),
+  ]);
 }
 </script>
 
 <template>
-  <MainLayout>
-    <div class="home-page">
-      <!-- Hero 区域 -->
-      <div class="hero-section">
-        <h1>向日葵文档</h1>
-        <p class="hero-desc">高效协作，知识共享</p>
-        <div class="hero-actions">
-          <Button type="primary" size="large" @click="openCreateModal">
-            <PlusOutlined />
-            创建空间
-          </Button>
-          <Button size="large" @click="router.push('/spaces')">
-            <AppstoreOutlined />
-            浏览空间
-          </Button>
+  <div class="container mx-auto p-4 md:p-8 space-y-10">
+    <!-- Header / My Space Section -->
+    <section>
+      <div class="flex items-center justify-between mb-6">
+        <div class="flex items-center gap-2">
+          <FolderKanban class="w-6 h-6 text-primary" />
+          <h1 class="text-2xl font-extrabold">我的空间</h1>
+        </div>
+        <button class="btn btn-neutral" @click="showCreateModal = true">
+          <Plus class="w-4 h-4" />
+          新建空间
+        </button>
+      </div>
+
+      <div v-if="spaceStore.loading && mySpaces.length === 0" class="flex justify-center py-10">
+        <span class="loading loading-spinner loading-lg text-primary"></span>
+      </div>
+      <div v-else-if="mySpaces.length === 0" class="text-center py-10 opacity-50">
+        您还没有加入任何空间
+      </div>
+      <div v-else class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        <router-link
+          v-for="space in mySpaces"
+          :key="space.id"
+          :to="`/space/${space.id}`"
+          class="block"
+        >
+          <SpaceCard :item="space" />
+        </router-link>
+      </div>
+    </section>
+
+    <!-- My Documents Section -->
+    <section>
+      <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
+        <h2 class="text-xl font-bold">我的文档</h2>
+
+        <div class="flex items-center gap-4">
+          <div role="tablist" class="tabs tabs-boxed">
+            <a
+              role="tab"
+              class="tab"
+              :class="{ 'tab-active': activeTab === 'created' }"
+              @click="activeTab = 'created'"
+            >
+              最近访问
+            </a>
+            <a
+              role="tab"
+              class="tab"
+              :class="{ 'tab-active': activeTab === 'shared' }"
+              @click="activeTab = 'shared'"
+            >
+              我参与的
+            </a>
+          </div>
+
+          <span class="badge badge-neutral">{{ myDocuments.length }} 篇</span>
         </div>
       </div>
 
-      <!-- 个人空间入口 -->
-      <div class="personal-section">
-        <Spin :spinning="personalSpaceLoading">
-          <Card
-            v-if="spaceStore.personalSpace"
-            hoverable
-            class="personal-space-card"
-            @click="goToSpace(spaceStore.personalSpace!)"
-          >
-            <div class="personal-space-content">
-              <div class="personal-space-icon">
-                <UserOutlined />
-              </div>
-              <div class="personal-space-info">
-                <h3>我的个人空间</h3>
-                <p>私人文档，仅自己可见</p>
-              </div>
-            </div>
-          </Card>
-        </Spin>
+      <div v-if="documentStore.loading && myDocuments.length === 0" class="flex justify-center py-10">
+        <span class="loading loading-spinner loading-lg text-primary"></span>
+      </div>
+      <div v-else-if="myDocuments.length === 0" class="text-center py-10 opacity-50">
+        暂无最近文档
+      </div>
+      <div v-else class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
+        <router-link
+          v-for="(doc, idx) in myDocuments"
+          :key="doc.id"
+          :to="`/space/${documentStore.recentDocuments[idx]?.spaceId}/doc/${doc.id}`"
+          class="block h-full"
+        >
+          <DocumentCard :item="doc" />
+        </router-link>
+      </div>
+    </section>
+       <!-- Community Section -->
+    <section class="pb-10">
+      <div class="flex items-center gap-2 mb-6">
+        <Hash class="w-5 h-5 text-secondary" />
+        <h2 class="text-xl font-bold">全部空间</h2>
       </div>
 
-      <!-- 最近文档 -->
-      <div class="recent-section">
-        <div class="section-header">
-          <h2>最近文档</h2>
-        </div>
-
-        <Spin :spinning="docsLoading">
-          <Row v-if="recentDocs.length > 0" :gutter="[16, 16]">
-            <Col v-for="doc in recentDocs" :key="doc.id" :xs="24" :sm="12" :md="8" :lg="6">
-              <Card hoverable class="doc-card" @click="goToDoc(doc)">
-                <template #cover>
-                  <div class="card-cover doc-cover">
-                    <FileTextOutlined />
-                  </div>
-                </template>
-                <Card.Meta
-                  :title="doc.title || '无标题'"
-                  :description="doc.spaceName"
-                />
-                <div class="doc-time">{{ formatTime(doc.lastViewedAt) }}</div>
-              </Card>
-            </Col>
-          </Row>
-          <Empty v-else description="暂无最近访问的文档" />
-        </Spin>
+      <div v-if="spaceStore.loading && communityItems.length === 0" class="flex justify-center py-10">
+        <span class="loading loading-spinner loading-lg text-primary"></span>
+      </div>
+      <div v-else-if="communityItems.length === 0" class="text-center py-10 opacity-50">
+        暂无社区内容
+      </div>
+      <div v-else class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+        <router-link
+          v-for="item in communityItems"
+          :key="item.id"
+          :to="`/space/${item.id}`"
+          class="block"
+        >
+          <CommunityCard :item="item" />
+        </router-link>
+      </div>
+    </section>
+    <!-- Community Section -->
+    <section class="pb-10">
+      <div class="flex items-center gap-2 mb-6">
+        <Hash class="w-5 h-5 text-secondary" />
+        <h2 class="text-xl font-bold">知识社区</h2>
       </div>
 
-      <!-- 公共空间 -->
-      <div class="recent-section">
-        <div class="section-header">
-          <h2>公共空间</h2>
-          <Button type="link" @click="router.push('/spaces')">查看全部</Button>
-        </div>
-
-        <Spin :spinning="loading">
-          <Row v-if="recentSpaces.length > 0" :gutter="[16, 16]">
-            <Col v-for="space in recentSpaces" :key="space.id" :xs="24" :sm="12" :md="8" :lg="6">
-              <Card hoverable class="space-card" @click="goToSpace(space)">
-                <template #cover>
-                  <div class="card-cover">
-                    <FileTextOutlined />
-                  </div>
-                </template>
-                <Card.Meta :title="space.name" :description="space.codeName" />
-              </Card>
-            </Col>
-          </Row>
-          <Empty v-else description="暂无空间" />
-        </Spin>
+      <div v-if="spaceStore.loading && communityItems.length === 0" class="flex justify-center py-10">
+        <span class="loading loading-spinner loading-lg text-primary"></span>
       </div>
-    </div>
+      <div v-else-if="communityItems.length === 0" class="text-center py-10 opacity-50">
+        暂无社区内容
+      </div>
+      <div v-else class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+        <router-link
+          v-for="item in communityItems"
+          :key="item.id"
+          :to="`/space/${item.id}`"
+          class="block"
+        >
+          <CommunityCard :item="item" />
+        </router-link>
+      </div>
+    </section>
 
-    <!-- 创建空间弹窗 -->
-    <Modal
-      v-model:open="createModalVisible"
-      title="创建空间"
-      :confirm-loading="creating"
-      @ok="handleCreateSpace"
-    >
-      <Form layout="vertical">
-        <FormItem label="空间名称" required>
-          <Input v-model:value="createForm.name" placeholder="请输入空间名称" />
-        </FormItem>
-        <FormItem label="空间代号" required>
-          <Input v-model:value="createForm.codeName" placeholder="请输入空间代号（英文）" />
-        </FormItem>
-         <FormItem label="可访问">
-          <Input readonly disabled placeholder="全员（本空间）" />
-        </FormItem>
-        <FormItem label="可编辑">
-          <Input readonly disabled placeholder="创建者、可编辑成员、空间管理员" />
-        </FormItem>
-      </Form>
-    </Modal>
-  </MainLayout>
+    <CreateSpaceModal v-model="showCreateModal" @success="handleCreateSuccess" />
+  </div>
 </template>
-
-<style lang="less" scoped>
-.home-page {
-  max-width: 1200px;
-  margin: 0 auto;
-  padding: 24px;
-}
-
-.personal-section {
-  margin-bottom: 32px;
-}
-
-.personal-space-card {
-  background: linear-gradient(135deg, #e6f4ff 0%, #bae0ff 100%);
-  border: none;
-
-  .personal-space-content {
-    display: flex;
-    align-items: center;
-    gap: 16px;
-  }
-
-  .personal-space-icon {
-    width: 48px;
-    height: 48px;
-    border-radius: 50%;
-    background: #1890ff;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 24px;
-    color: #fff;
-  }
-
-  .personal-space-info {
-    h3 {
-      margin: 0 0 4px 0;
-      font-size: 16px;
-      font-weight: 600;
-      color: rgba(0, 0, 0, 0.85);
-    }
-
-    p {
-      margin: 0;
-      font-size: 14px;
-      color: rgba(0, 0, 0, 0.45);
-    }
-  }
-}
-
-.hero-section {
-  text-align: center;
-  padding: 60px 20px;
-  background: linear-gradient(135deg, #1890ff 0%, #36cfc9 100%);
-  border-radius: 8px;
-  margin-bottom: 40px;
-  color: #fff;
-
-  h1 {
-    font-size: 42px;
-    font-weight: 700;
-    margin-bottom: 16px;
-  }
-
-  .hero-desc {
-    font-size: 18px;
-    opacity: 0.9;
-    margin-bottom: 32px;
-  }
-
-  .hero-actions {
-    display: flex;
-    gap: 16px;
-    justify-content: center;
-  }
-}
-
-.recent-section {
-  .section-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 20px;
-
-    h2 {
-      font-size: 20px;
-      font-weight: 600;
-      margin: 0;
-    }
-  }
-}
-
-.space-card {
-  .card-cover {
-    height: 120px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    background: linear-gradient(135deg, #f5f7fa 0%, #e4e9f0 100%);
-    font-size: 40px;
-    color: #1890ff;
-  }
-}
-
-.doc-card {
-  .card-cover {
-    height: 100px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    background: linear-gradient(135deg, #f0f5ff 0%, #d6e4ff 100%);
-    font-size: 36px;
-    color: #1890ff;
-  }
-
-  .doc-time {
-    font-size: 12px;
-    color: rgba(0, 0, 0, 0.45);
-    margin-top: 8px;
-  }
-}
-</style>

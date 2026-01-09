@@ -1,400 +1,345 @@
 <script setup lang="ts">
 import { ref, onMounted, computed } from 'vue';
 import { useRoute } from 'vue-router';
-import {
-  Card,
-  Table,
-  Button,
-  Tag,
-  Modal,
-  Form,
-  FormItem,
-  Input,
-  Switch,
-  Popconfirm,
-  message,
-  Space,
-  Tabs,
-  TabPane,
-  Badge,
-} from 'ant-design-vue';
-
+import { UserPlus, Users, Clock, Check, X } from 'lucide-vue-next';
 import { useSpaceStore } from '@/stores/space';
-import { getPendingRequests, approveAccess } from '@/api/access';
-import type { UserSpaceAuth, SpaceMemberForm, AccessRequest } from '@/types';
+import { useUserStore } from '@/stores/user';
+import MemberList from '@/components/MemberList.vue';
+import type { UserSpaceAuth, AccessRequest } from '@/types';
+import * as accessApi from '@/api/access';
 
 const route = useRoute();
 const spaceStore = useSpaceStore();
+const userStore = useUserStore();
 
 const spaceId = computed(() => route.params.spaceId as string);
-const loading = ref(false);
-const activeTab = ref('members');
+const activeTab = ref<'members' | 'pending'>('members');
 
-// 待审批申请
 const pendingRequests = ref<AccessRequest[]>([]);
-const pendingLoading = ref(false);
-const approving = ref<string | null>(null);
+const loadingRequests = ref(false);
 
-const pendingColumns = [
-  {
-    title: '申请人',
-    dataIndex: 'username',
-    key: 'username',
-  },
-  {
-    title: '类型',
-    dataIndex: 'type',
-    key: 'type',
-    customRender: ({ text }: { text: string }) => {
-      return text === 'SPACE' ? '空间权限' : '文档权限';
-    },
-  },
-  {
-    title: '申请权限',
-    dataIndex: 'requestedPerm',
-    key: 'requestedPerm',
-  },
-  {
-    title: '申请原因',
-    dataIndex: 'reason',
-    key: 'reason',
-  },
-  {
-    title: '申请时间',
-    dataIndex: 'ctime',
-    key: 'ctime',
-  },
-  {
-    title: '操作',
-    key: 'action',
-    width: 150,
-  },
-];
-
-// 添加成员弹窗
-const addModalVisible = ref(false);
-const addForm = ref<SpaceMemberForm>({
-  username: '',
+// Add member form
+const showAddMemberModal = ref(false);
+const newMemberUsername = ref('');
+const newMemberPermissions = ref({
   canRead: true,
   canCreateFolder: false,
-  canCreateDoc: false,
+  canCreateDoc: true,
   superAdmin: false,
 });
 const adding = ref(false);
 
-// 编辑成员弹窗
-const editModalVisible = ref(false);
-const editForm = ref<SpaceMemberForm>({
-  username: '',
+// Edit member form
+const showEditMemberModal = ref(false);
+const editingMember = ref<UserSpaceAuth | null>(null);
+const editPermissions = ref({
   canRead: true,
   canCreateFolder: false,
-  canCreateDoc: false,
+  canCreateDoc: true,
   superAdmin: false,
 });
-const editing = ref(false);
-
-const columns = [
-  {
-    title: '用户名',
-    dataIndex: 'username',
-    key: 'username',
-  },
-  {
-    title: '权限',
-    key: 'permissions',
-    customRender: ({ record }: { record: UserSpaceAuth }) => {
-      const tags = [];
-      if (record.superAdmin) tags.push({ label: '管理员', color: 'red' });
-      if (record.canCreateDoc) tags.push({ label: '创建文档', color: 'blue' });
-      if (record.canCreateFolder) tags.push({ label: '创建文件夹', color: 'green' });
-      if (record.canRead) tags.push({ label: '读取', color: 'default' });
-      return tags;
-    },
-  },
-  {
-    title: '来源',
-    dataIndex: 'source',
-    key: 'source',
-    customRender: ({ text }: { text: string }) => {
-      return text === 'AUTO_INIT' ? '自动' : '手动';
-    },
-  },
-  {
-    title: '操作',
-    key: 'action',
-    width: 150,
-  },
-];
+const updating = ref(false);
 
 onMounted(async () => {
-  await Promise.all([loadMembers(), loadPendingRequests()]);
+  await loadMembers();
+  await loadPendingRequests();
 });
 
 async function loadMembers() {
-  if (!spaceId.value) return;
-
-  loading.value = true;
-  try {
-    await spaceStore.fetchSpaceMembers(spaceId.value);
-  } finally {
-    loading.value = false;
-  }
+  await spaceStore.fetchSpaceMembers(spaceId.value);
 }
 
 async function loadPendingRequests() {
-  pendingLoading.value = true;
+  loadingRequests.value = true;
   try {
-    const res = await getPendingRequests();
-    pendingRequests.value = res.list || [];
-  } catch {
-    // 错误已在拦截器处理
-  } finally {
-    pendingLoading.value = false;
-  }
-}
-
-async function handleApprove(request: Record<string, any>, approved: boolean) {
-  approving.value = request.documentId;
-  try {
-    await approveAccess({
-      requestId: request.documentId,
-      approved,
+    const data = await accessApi.getPendingRequests({
+      type: 'SPACE',
+      targetId: spaceId.value,
     });
-    message.success(approved ? '已通过' : '已拒绝');
-    await loadPendingRequests();
-    if (approved) {
-      await loadMembers();
-    }
-  } catch {
-    // 错误已在拦截器处理
+    pendingRequests.value = data.list;
+  } catch (error) {
+    console.error('Failed to load pending requests:', error);
   } finally {
-    approving.value = null;
+    loadingRequests.value = false;
   }
-}
-
-function openAddModal() {
-  addForm.value = {
-    username: '',
-    canRead: true,
-    canCreateFolder: false,
-    canCreateDoc: false,
-    superAdmin: false,
-  };
-  addModalVisible.value = true;
 }
 
 async function handleAddMember() {
-  if (!addForm.value.username) {
-    message.warning('请输入用户名');
-    return;
-  }
+  if (!newMemberUsername.value.trim()) return;
 
   adding.value = true;
   try {
-    await spaceStore.addMembers(spaceId.value, [addForm.value]);
-    message.success('添加成功');
-    addModalVisible.value = false;
-  } catch {
-    // 错误已在拦截器处理
+    await spaceStore.addMembers(spaceId.value, [{
+      username: newMemberUsername.value.trim(),
+      ...newMemberPermissions.value,
+    }]);
+
+    showAddMemberModal.value = false;
+    newMemberUsername.value = '';
+    resetNewMemberPermissions();
+  } catch (error) {
+    console.error('Failed to add member:', error);
   } finally {
     adding.value = false;
   }
 }
 
-function openEditModal(member: Record<string, unknown>) {
-  editForm.value = {
-    username: String(member.username),
-    canRead: Boolean(member.canRead),
-    canCreateFolder: Boolean(member.canCreateFolder),
-    canCreateDoc: Boolean(member.canCreateDoc),
-    superAdmin: Boolean(member.superAdmin),
+function resetNewMemberPermissions() {
+  newMemberPermissions.value = {
+    canRead: true,
+    canCreateFolder: false,
+    canCreateDoc: true,
+    superAdmin: false,
   };
-  editModalVisible.value = true;
 }
 
-async function handleEditMember() {
-  editing.value = true;
+function handleEditMember(member: UserSpaceAuth) {
+  editingMember.value = member;
+  editPermissions.value = {
+    canRead: member.canRead,
+    canCreateFolder: member.canCreateFolder,
+    canCreateDoc: member.canCreateDoc,
+    superAdmin: member.superAdmin,
+  };
+  showEditMemberModal.value = true;
+}
+
+async function handleUpdateMember() {
+  if (!editingMember.value) return;
+
+  updating.value = true;
   try {
-    await spaceStore.updateMember(spaceId.value, editForm.value);
-    message.success('更新成功');
-    editModalVisible.value = false;
-  } catch {
-    // 错误已在拦截器处理
+    await spaceStore.updateMember(
+      spaceId.value,
+      editingMember.value.username,
+      editPermissions.value
+    );
+
+    showEditMemberModal.value = false;
+    editingMember.value = null;
+  } catch (error) {
+    console.error('Failed to update member:', error);
   } finally {
-    editing.value = false;
+    updating.value = false;
   }
 }
 
 async function handleRemoveMember(username: string) {
   try {
-    await spaceStore.removeMembers(spaceId.value, [username]);
-    message.success('移除成功');
-  } catch {
-    // 错误已在拦截器处理
+    await spaceStore.removeMember(spaceId.value, username);
+  } catch (error) {
+    console.error('Failed to remove member:', error);
+  }
+}
+
+async function handleApproveRequest(request: AccessRequest) {
+  try {
+    await accessApi.approveAccess({
+      requestId: request.documentId,
+      status: 'APPROVED',
+    });
+    await loadPendingRequests();
+    await loadMembers();
+  } catch (error) {
+    console.error('Failed to approve request:', error);
+  }
+}
+
+async function handleRejectRequest(request: AccessRequest) {
+  try {
+    await accessApi.approveAccess({
+      requestId: request.documentId,
+      status: 'REJECTED',
+    });
+    await loadPendingRequests();
+  } catch (error) {
+    console.error('Failed to reject request:', error);
   }
 }
 </script>
 
 <template>
-  <div class="space-members">
-    <Card title="成员管理">
-      <Tabs v-model:activeKey="activeTab">
-        <TabPane key="members">
-          <template #tab>
-            成员列表
-          </template>
-          <div class="tab-header">
-            <Button type="primary" @click="openAddModal">
-              <PlusOutlined />
-              添加成员
-            </Button>
+  <div class="p-6 max-w-4xl mx-auto">
+    <!-- Header -->
+    <div class="flex items-center justify-between mb-6">
+      <div>
+        <h1 class="text-2xl font-bold">成员管理</h1>
+        <p class="opacity-60 mt-1">管理空间成员和权限</p>
+      </div>
+      <button class="btn btn-primary" @click="showAddMemberModal = true">
+        <UserPlus class="w-4 h-4" />
+        添加成员
+      </button>
+    </div>
+
+    <!-- Tabs -->
+    <div role="tablist" class="tabs tabs-boxed mb-6 w-fit">
+      <a
+        role="tab"
+        class="tab gap-2"
+        :class="{ 'tab-active': activeTab === 'members' }"
+        @click="activeTab = 'members'"
+      >
+        <Users class="w-4 h-4" />
+        成员列表
+        <span class="badge badge-sm">{{ spaceStore.currentSpaceMembers.length }}</span>
+      </a>
+      <a
+        role="tab"
+        class="tab gap-2"
+        :class="{ 'tab-active': activeTab === 'pending' }"
+        @click="activeTab = 'pending'"
+      >
+        <Clock class="w-4 h-4" />
+        待审批
+        <span v-if="pendingRequests.length > 0" class="badge badge-sm badge-error">
+          {{ pendingRequests.length }}
+        </span>
+      </a>
+    </div>
+
+    <!-- Members Tab -->
+    <div v-if="activeTab === 'members'" class="card bg-base-100 shadow-sm">
+      <div class="card-body">
+        <MemberList
+          :members="spaceStore.currentSpaceMembers"
+          type="space"
+          :current-username="userStore.username"
+          :can-edit="spaceStore.isSuperAdmin"
+          @edit="handleEditMember"
+          @remove="handleRemoveMember"
+        />
+      </div>
+    </div>
+
+    <!-- Pending Tab -->
+    <div v-if="activeTab === 'pending'" class="card bg-base-100 shadow-sm">
+      <div class="card-body">
+        <div v-if="loadingRequests" class="flex justify-center py-10">
+          <span class="loading loading-spinner loading-lg text-primary"></span>
+        </div>
+
+        <div v-else-if="pendingRequests.length === 0" class="text-center py-10 opacity-50">
+          暂无待审批申请
+        </div>
+
+        <div v-else class="space-y-4">
+          <div
+            v-for="request in pendingRequests"
+            :key="request.id"
+            class="flex items-center justify-between p-4 bg-base-200 rounded-xl"
+          >
+            <div>
+              <p class="font-medium">{{ request.username }}</p>
+              <p class="text-sm opacity-60 mt-1">{{ request.reason || '未提供申请理由' }}</p>
+            </div>
+            <div class="flex items-center gap-2">
+              <button class="btn btn-success btn-sm" @click="handleApproveRequest(request)">
+                <Check class="w-4 h-4" />
+                通过
+              </button>
+              <button class="btn btn-error btn-sm" @click="handleRejectRequest(request)">
+                <X class="w-4 h-4" />
+                拒绝
+              </button>
+            </div>
           </div>
-          <Table
-            :columns="columns"
-            :data-source="spaceStore.currentSpaceMembers"
-            :loading="loading"
-            :pagination="false"
-            row-key="id"
-          >
-            <template #bodyCell="{ column, record }">
-              <template v-if="column.key === 'permissions'">
-                <Space>
-                  <Tag v-if="record.superAdmin" color="red">管理员</Tag>
-                  <Tag v-if="record.canCreateDoc" color="blue">创建文档</Tag>
-                  <Tag v-if="record.canCreateFolder" color="green">创建文件夹</Tag>
-                  <Tag v-if="record.canRead && !record.superAdmin" color="default">读取</Tag>
-                </Space>
-              </template>
-              <template v-else-if="column.key === 'action'">
-                <Space>
-                  <Button type="link" size="small" @click="openEditModal(record)">
-                    <EditOutlined />
-                  </Button>
-                  <Popconfirm
-                    title="确定要移除该成员吗？"
-                    @confirm="handleRemoveMember(record.username)"
-                  >
-                    <Button type="link" size="small" danger>
-                      <DeleteOutlined />
-                    </Button>
-                  </Popconfirm>
-                </Space>
-              </template>
-            </template>
-          </Table>
-        </TabPane>
+        </div>
+      </div>
+    </div>
 
-        <TabPane key="pending">
-          <template #tab>
-            <Badge :count="pendingRequests.length" :offset="[10, 0]">
-              待审批
-            </Badge>
-          </template>
-          <Table
-            :columns="pendingColumns"
-            :data-source="pendingRequests"
-            :loading="pendingLoading"
-            :pagination="false"
-            row-key="documentId"
-          >
-            <template #bodyCell="{ column, record }">
-              <template v-if="column.key === 'type'">
-                <Tag :color="record.type === 'SPACE' ? 'blue' : 'green'">
-                  {{ record.type === 'SPACE' ? '空间权限' : '文档权限' }}
-                </Tag>
-              </template>
-              <template v-else-if="column.key === 'action'">
-                <Space>
-                  <Button
-                    type="primary"
-                    size="small"
-                    :loading="approving === record.documentId"
-                    @click="handleApprove(record, true)"
-                  >
-                    <CheckOutlined />
-                    通过
-                  </Button>
-                  <Button
-                    size="small"
-                    danger
-                    :loading="approving === record.documentId"
-                    @click="handleApprove(record, false)"
-                  >
-                    <CloseOutlined />
-                    拒绝
-                  </Button>
-                </Space>
-              </template>
-            </template>
-          </Table>
-        </TabPane>
-      </Tabs>
-    </Card>
+    <!-- Add Member Modal -->
+    <dialog class="modal" :class="{ 'modal-open': showAddMemberModal }">
+      <div class="modal-box">
+        <h3 class="font-bold text-lg">添加成员</h3>
 
-    <!-- 添加成员弹窗 -->
-    <Modal
-      v-model:open="addModalVisible"
-      title="添加成员"
-      :confirm-loading="adding"
-      @ok="handleAddMember"
-    >
-      <Form layout="vertical">
-        <FormItem label="用户名" required>
-          <Input v-model:value="addForm.username" placeholder="请输入用户名" />
-        </FormItem>
-        <FormItem label="读取权限">
-          <Switch v-model:checked="addForm.canRead" />
-        </FormItem>
-        <FormItem label="创建文档权限">
-          <Switch v-model:checked="addForm.canCreateDoc" />
-        </FormItem>
-        <FormItem label="创建文件夹权限">
-          <Switch v-model:checked="addForm.canCreateFolder" />
-        </FormItem>
-        <FormItem label="管理员权限">
-          <Switch v-model:checked="addForm.superAdmin" />
-        </FormItem>
-      </Form>
-    </Modal>
+        <div class="py-4 space-y-4">
+          <div class="form-control">
+            <label class="label">
+              <span class="label-text">用户名</span>
+            </label>
+            <input
+              v-model="newMemberUsername"
+              type="text"
+              placeholder="输入用户名"
+              class="input input-bordered"
+            />
+          </div>
 
-    <!-- 编辑成员弹窗 -->
-    <Modal
-      v-model:open="editModalVisible"
-      title="编辑成员权限"
-      :confirm-loading="editing"
-      @ok="handleEditMember"
-    >
-      <Form layout="vertical">
-        <FormItem label="用户名">
-          <Input :value="editForm.username" disabled />
-        </FormItem>
-        <FormItem label="读取权限">
-          <Switch v-model:checked="editForm.canRead" />
-        </FormItem>
-        <FormItem label="创建文档权限">
-          <Switch v-model:checked="editForm.canCreateDoc" />
-        </FormItem>
-        <FormItem label="创建文件夹权限">
-          <Switch v-model:checked="editForm.canCreateFolder" />
-        </FormItem>
-        <FormItem label="管理员权限">
-          <Switch v-model:checked="editForm.superAdmin" />
-        </FormItem>
-      </Form>
-    </Modal>
+          <div class="form-control">
+            <label class="label">
+              <span class="label-text">权限设置</span>
+            </label>
+            <div class="space-y-2">
+              <label class="label cursor-pointer justify-start gap-3">
+                <input type="checkbox" v-model="newMemberPermissions.canRead" class="checkbox checkbox-sm" />
+                <span class="label-text">可读取</span>
+              </label>
+              <label class="label cursor-pointer justify-start gap-3">
+                <input type="checkbox" v-model="newMemberPermissions.canCreateDoc" class="checkbox checkbox-sm" />
+                <span class="label-text">可创建文档</span>
+              </label>
+              <label class="label cursor-pointer justify-start gap-3">
+                <input type="checkbox" v-model="newMemberPermissions.canCreateFolder" class="checkbox checkbox-sm" />
+                <span class="label-text">可创建文件夹</span>
+              </label>
+              <label class="label cursor-pointer justify-start gap-3">
+                <input type="checkbox" v-model="newMemberPermissions.superAdmin" class="checkbox checkbox-sm" />
+                <span class="label-text">管理员</span>
+              </label>
+            </div>
+          </div>
+        </div>
+
+        <div class="modal-action">
+          <button class="btn" @click="showAddMemberModal = false">取消</button>
+          <button class="btn btn-primary" :disabled="adding" @click="handleAddMember">
+            <span v-if="adding" class="loading loading-spinner loading-sm"></span>
+            添加
+          </button>
+        </div>
+      </div>
+      <form method="dialog" class="modal-backdrop">
+        <button @click="showAddMemberModal = false">close</button>
+      </form>
+    </dialog>
+
+    <!-- Edit Member Modal -->
+    <dialog class="modal" :class="{ 'modal-open': showEditMemberModal }">
+      <div class="modal-box">
+        <h3 class="font-bold text-lg">编辑成员权限</h3>
+        <p class="opacity-60 py-2">{{ editingMember?.username }}</p>
+
+        <div class="py-4 space-y-2">
+          <label class="label cursor-pointer justify-start gap-3">
+            <input type="checkbox" v-model="editPermissions.canRead" class="checkbox checkbox-sm" />
+            <span class="label-text">可读取</span>
+          </label>
+          <label class="label cursor-pointer justify-start gap-3">
+            <input type="checkbox" v-model="editPermissions.canCreateDoc" class="checkbox checkbox-sm" />
+            <span class="label-text">可创建文档</span>
+          </label>
+          <label class="label cursor-pointer justify-start gap-3">
+            <input type="checkbox" v-model="editPermissions.canCreateFolder" class="checkbox checkbox-sm" />
+            <span class="label-text">可创建文件夹</span>
+          </label>
+          <label class="label cursor-pointer justify-start gap-3">
+            <input type="checkbox" v-model="editPermissions.superAdmin" class="checkbox checkbox-sm" />
+            <span class="label-text">管理员</span>
+          </label>
+        </div>
+
+        <div class="modal-action">
+          <button class="btn" @click="showEditMemberModal = false">取消</button>
+          <button class="btn btn-primary" :disabled="updating" @click="handleUpdateMember">
+            <span v-if="updating" class="loading loading-spinner loading-sm"></span>
+            保存
+          </button>
+        </div>
+      </div>
+      <form method="dialog" class="modal-backdrop">
+        <button @click="showEditMemberModal = false">close</button>
+      </form>
+    </dialog>
   </div>
 </template>
-
-<style lang="less" scoped>
-.space-members {
-  padding: 24px;
-  max-width: 1000px;
-  margin: 0 auto;
-
-  .tab-header {
-    margin-bottom: 16px;
-    display: flex;
-    justify-content: flex-end;
-  }
-}
-</style>

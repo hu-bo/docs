@@ -22,8 +22,11 @@
 | 安全 | Helmet ^7.1.0 |
 | 日志 | @repo/logger |
 | 测试 | Vitest ^2.0.0 |
-| 工具函数 ｜ lodash ^4.17.21 |
-｜实时文档编辑｜   "y-protocols": "^1.0.7",  "y-websocket": "^3.0.0", "yjs": "^13.6.28" ｜
+| 工具函数 | lodash ^4.17.21 |
+| 实时文档编辑 | @hocuspocus/server ^2.13.0, yjs ^13.6.23, ws ^8.18.0 |
+| Redis | ioredis ^5.9.0, @hocuspocus/extension-redis ^2.13.0 |
+| JWT | jsonwebtoken ^9.0.2 |
+
 ---
 
 ## 目录结构
@@ -44,8 +47,10 @@ docs-api/
 │   │   │   └── index.ts            # 文档管理
 │   │   ├── comment/
 │   │   │   └── index.ts            # 评论管理
-│   │   └── access-request/
-│   │       └── index.ts            # 权限申请处理
+│   │   ├── access-request/
+│   │   │   └── index.ts            # 权限申请处理
+│   │   └── collab/
+│   │       └── index.ts            # 协作Token签发
 │   ├── entities/                   # typeORM，参考 apps/docs-strapi/src/api 创建 entity
 │   ├── routes/                     # 路由聚合（可按 controller 目录分发）
 │   │   ├── space/
@@ -58,15 +63,23 @@ docs-api/
 │   │   │   └── index.ts            # 评论管理
 │   │   ├── access-request/
 │   │   │   └── index.ts            # 权限申请处理
+│   │   ├── collab/
+│   │   │   └── index.ts            # 协作Token路由
 │   │   └── index.ts            # 主路由
 │   ├── services/
+│   │   └── permission.ts       # 权限检查服务
 │   ├── schemas/                # zod的schema，参数校验
 │   │   ├── strapi.ts           # Strapi API 封装
 │   │   └── permission.ts       # 权限检查逻辑
 │   ├── middlewares/
-│   │   ├── permit.ts           # 认证中间件
+│   │   ├── auth.ts             # 认证中间件
 │   │   └── errorHandler.ts     # 错误处理
-│   ├── websocket/              # WSSharedDoc ws auth
+│   ├── websocket/              # WebSocket 多人协作
+│   │   ├── collab.ts           # Hocuspocus 服务器配置
+│   │   ├── index.ts            # 导出索引
+│   │   └── extensions/
+│   │       ├── auth.extension.ts       # JWT 认证扩展
+│   │       └── persistence.extension.ts # Redis 持久化扩展
 │   ├── types/
 │   │   └── index.ts            # 类型定义
 │   └── utils/
@@ -200,6 +213,35 @@ view示例：
 
 ---
 
+### 协作Token `/api/collab`
+
+| 方法 | 路径 | 说明 | 权限要求 |
+|------|------|------|----------|
+| POST | `/token` | 获取文档协作Token | 登录用户 + 文档read权限 |
+
+#### 请求示例
+```json
+POST /api/collab/token
+{
+  "docId": 123
+}
+```
+
+#### 响应示例
+```json
+{
+  "code": 0,
+  "message": "success",
+  "data": {
+    "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+    "docName": "doc_123",
+    "role": "editor",
+    "wsUrl": "/collab"
+  }
+}
+```
+
+---
 
 ## 认证与授权
 
@@ -479,6 +521,139 @@ const MOCK_USERS = [
 ---
 ## 数据模型
 参考：/Users/hubo/Work/Coding/MyProject/app-nodejs/docs/docs-sql.md
+
+---
+
+## TipTap多人协作 (WebSocket + Hocuspocus + Redis)
+
+### 协作架构
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│  前端 (Vue + TipTap)                                         │
+│  1. POST /api/collab/token 获取协作Token                     │
+│  2. WebSocket连接 ws://host/collab?doc=doc_123               │
+├─────────────────────────────────────────────────────────────┤
+│                    ↓ WebSocket upgrade                       │
+├─────────────────────────────────────────────────────────────┤
+│  后端 WebSocket 服务                                          │
+│  - Hocuspocus Server 处理协作连接                             │
+│  - AuthExtension: JWT认证 + 权限检查                          │
+│  - RedisPersistenceExtension: Yjs文档持久化到Redis            │
+├─────────────────────────────────────────────────────────────┤
+│                    ↓ 持久化                                   │
+├─────────────────────────────────────────────────────────────┤
+│  Redis                                                       │
+│  - Key: docs:ydoc:doc_{docId}                                │
+│  - Value: Yjs 二进制状态                                      │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### 协作链路说明
+
+1. **获取协作Token**: 前端调用 `POST /api/collab/token` 获取JWT Token
+2. **WebSocket连接**: 使用 HocuspocusProvider 连接 `ws://host/collab?doc=doc_{docId}`
+3. **认证校验**: 后端 `AuthExtension` 验证JWT并检查文档权限
+4. **权限控制**: 只读用户设置 `connection.readOnly = true`
+5. **实时同步**: TipTap Collaboration 扩展同步编辑操作
+6. **持久化**: `RedisPersistenceExtension` 将Yjs文档状态保存到Redis
+
+### 环境变量
+
+| 变量 | 说明 | 默认值 |
+|------|------|--------|
+| REDIS_URL | Redis连接地址 | redis://localhost:6379 |
+| JWT_SECRET | 协作Token签名密钥 | docs-collab-secret-change-me |
+| COLLAB_ENABLE_REDIS_PUBSUB | 多实例时启用Redis PubSub | false |
+
+### WebSocket 端点
+
+```
+ws://localhost:3001/collab?doc=doc_{docId}
+```
+
+**连接参数**:
+- `doc`: 文档名称，格式为 `doc_{docId}`
+- `token`: 协作Token (通过 HocuspocusProvider 的 token 参数传递)
+
+### 协作Token (JWT Payload)
+
+```typescript
+interface CollabJwtPayload {
+  sub: string      // username
+  name: string     // 显示名
+  docId: number    // 文档ID
+  role: 'editor' | 'reader'
+  type: 'collab'
+  iat: number      // 签发时间
+  exp: number      // 过期时间 (24h)
+}
+```
+
+### 前端接入示例
+
+```typescript
+import { HocuspocusProvider } from '@hocuspocus/provider'
+import * as Y from 'yjs'
+
+// 1. 获取协作Token
+const { data } = await axios.post('/api/collab/token', { docId: 123 })
+const { token, docName } = data.data
+
+// 2. 创建Yjs文档
+const ydoc = new Y.Doc()
+
+// 3. 连接协作服务
+const provider = new HocuspocusProvider({
+  url: 'ws://localhost:3001/collab',
+  name: docName,  // doc_123
+  document: ydoc,
+  token,
+  onStatus: (event) => {
+    console.log('Connection status:', event.status)
+  },
+  onAuthenticationFailed: () => {
+    console.error('Authentication failed')
+  }
+})
+
+// 4. TipTap编辑器配置
+const editor = useEditor({
+  extensions: [
+    StarterKit.configure({ history: false }),
+    Collaboration.configure({ document: ydoc }),
+    CollaborationCursor.configure({
+      provider,
+      user: { name: 'Alice', color: '#f97316' }
+    })
+  ]
+})
+```
+
+### 后端实现文件
+
+| 文件 | 说明 |
+|------|------|
+| `src/websocket/collab.ts` | Hocuspocus服务器配置 |
+| `src/websocket/extensions/auth.extension.ts` | JWT认证 + 权限检查 |
+| `src/websocket/extensions/persistence.extension.ts` | Redis持久化 |
+| `src/controllers/collab/index.ts` | 协作Token签发API |
+| `src/routes/collab/index.ts` | 协作路由 |
+
+### 多实例部署
+
+启用 `COLLAB_ENABLE_REDIS_PUBSUB=true` 后，多个服务实例间通过 Redis PubSub 同步协作更新。
+
+```bash
+# 实例1
+COLLAB_ENABLE_REDIS_PUBSUB=true node dist/index.js
+
+# 实例2
+COLLAB_ENABLE_REDIS_PUBSUB=true node dist/index.js
+```
+
+详细实现参考：/Users/hubo/Work/Coding/MyProject/docs/docs/TipTap.md
+
 ---
 
 ## 请求处理流程

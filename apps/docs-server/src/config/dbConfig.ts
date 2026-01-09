@@ -10,6 +10,7 @@ const dbConfig: DataSourceOptions = {
     logging: false,
     connectTimeout: 30000,
     dateStrings: true,
+    entities: ['**/entities/*.js'],
     extra: {
         typeCast: function (field: any, next: any) {
             // for reading from database

@@ -1,6 +1,6 @@
 import { tool } from '@langchain/core/tools'
 import { z } from 'zod'
-import { beatsVectorQuery, getBaiKes } from './api.js'
+import { beatsVectorQuery, getBaiKes } from './api'
 
 interface BaiKeSearchConfig {
     datasetId: string

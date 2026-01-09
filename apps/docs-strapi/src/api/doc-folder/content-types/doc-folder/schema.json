@@ -1,6 +1,6 @@
 {
   "kind": "collectionType",
-  "collectionName": "doc_folders",
+  "collectionName": "doc_folder",
   "info": {
     "singularName": "doc-folder",
     "pluralName": "doc-folders",
@@ -12,10 +12,10 @@
   "pluginOptions": {},
   "attributes": {
     "doc_id": {
-      "type": "biginteger"
+      "type": "string"
     },
-    "space_id": {
-      "type": "biginteger"
+    "folder_id": {
+      "type": "string"
     },
     "ctime": {
       "type": "datetime"

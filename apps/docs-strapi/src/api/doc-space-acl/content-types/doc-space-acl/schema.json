@@ -1,6 +1,6 @@
 {
   "kind": "collectionType",
-  "collectionName": "doc_space_acls",
+  "collectionName": "doc_space_acl",
   "info": {
     "singularName": "doc-space-acl",
     "pluralName": "doc-space-acls",
@@ -12,11 +12,11 @@
   "pluginOptions": {},
   "attributes": {
     "docId": {
-      "type": "biginteger",
+      "type": "string",
       "required": true
     },
     "spaceId": {
-      "type": "biginteger",
+      "type": "string",
       "required": true
     },
     "perm": {

@@ -481,7 +481,7 @@ export interface ApiAccessRequestAccessRequest
 }
 
 export interface ApiCommentComment extends Struct.CollectionTypeSchema {
-  collectionName: 'comments';
+  collectionName: 'comment';
   info: {
     displayName: 'Comment';
     pluralName: 'comments';
@@ -497,8 +497,7 @@ export interface ApiCommentComment extends Struct.CollectionTypeSchema {
     createdBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
       Schema.Attribute.Private;
     ctime: Schema.Attribute.DateTime;
-    docId: Schema.Attribute.BigInteger & Schema.Attribute.Required;
-    isDeleted: Schema.Attribute.Boolean & Schema.Attribute.DefaultTo<false>;
+    docId: Schema.Attribute.String & Schema.Attribute.Required;
     locale: Schema.Attribute.String & Schema.Attribute.Private;
     localizations: Schema.Attribute.Relation<
       'oneToMany',
@@ -506,7 +505,7 @@ export interface ApiCommentComment extends Struct.CollectionTypeSchema {
     > &
       Schema.Attribute.Private;
     mtime: Schema.Attribute.DateTime;
-    parentId: Schema.Attribute.BigInteger & Schema.Attribute.DefaultTo<'0'>;
+    parentId: Schema.Attribute.String & Schema.Attribute.DefaultTo<'0'>;
     publishedAt: Schema.Attribute.DateTime;
     updatedAt: Schema.Attribute.DateTime;
     updatedBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
@@ -520,7 +519,7 @@ export interface ApiCommentComment extends Struct.CollectionTypeSchema {
 }
 
 export interface ApiDocFolderDocFolder extends Struct.CollectionTypeSchema {
-  collectionName: 'doc_folders';
+  collectionName: 'doc_folder';
   info: {
     displayName: 'DocFolder';
     pluralName: 'doc-folders';
@@ -534,7 +533,8 @@ export interface ApiDocFolderDocFolder extends Struct.CollectionTypeSchema {
     createdBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
       Schema.Attribute.Private;
     ctime: Schema.Attribute.DateTime;
-    doc_id: Schema.Attribute.BigInteger;
+    doc_id: Schema.Attribute.String;
+    folder_id: Schema.Attribute.String;
     locale: Schema.Attribute.String & Schema.Attribute.Private;
     localizations: Schema.Attribute.Relation<
       'oneToMany',
@@ -543,7 +543,6 @@ export interface ApiDocFolderDocFolder extends Struct.CollectionTypeSchema {
       Schema.Attribute.Private;
     mtime: Schema.Attribute.DateTime;
     publishedAt: Schema.Attribute.DateTime;
-    space_id: Schema.Attribute.BigInteger;
     updatedAt: Schema.Attribute.DateTime;
     updatedBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
       Schema.Attribute.Private;
@@ -551,7 +550,7 @@ export interface ApiDocFolderDocFolder extends Struct.CollectionTypeSchema {
 }
 
 export interface ApiDocSpaceAclDocSpaceAcl extends Struct.CollectionTypeSchema {
-  collectionName: 'doc_space_acls';
+  collectionName: 'doc_space_acl';
   info: {
     displayName: 'DocSpaceAcl';
     pluralName: 'doc-space-acls';
@@ -565,7 +564,7 @@ export interface ApiDocSpaceAclDocSpaceAcl extends Struct.CollectionTypeSchema {
     createdBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
       Schema.Attribute.Private;
     ctime: Schema.Attribute.DateTime;
-    docId: Schema.Attribute.BigInteger & Schema.Attribute.Required;
+    docId: Schema.Attribute.String & Schema.Attribute.Required;
     locale: Schema.Attribute.String & Schema.Attribute.Private;
     localizations: Schema.Attribute.Relation<
       'oneToMany',
@@ -576,7 +575,7 @@ export interface ApiDocSpaceAclDocSpaceAcl extends Struct.CollectionTypeSchema {
     perm: Schema.Attribute.Enumeration<['READ', 'EDIT']> &
       Schema.Attribute.Required;
     publishedAt: Schema.Attribute.DateTime;
-    spaceId: Schema.Attribute.BigInteger & Schema.Attribute.Required;
+    spaceId: Schema.Attribute.String & Schema.Attribute.Required;
     updatedAt: Schema.Attribute.DateTime;
     updatedBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
       Schema.Attribute.Private;
@@ -584,7 +583,7 @@ export interface ApiDocSpaceAclDocSpaceAcl extends Struct.CollectionTypeSchema {
 }
 
 export interface ApiDocUserAclDocUserAcl extends Struct.CollectionTypeSchema {
-  collectionName: 'doc_user_acls';
+  collectionName: 'doc_user_acl';
   info: {
     displayName: 'DocUserAcl';
     pluralName: 'doc-user-acls';
@@ -598,7 +597,7 @@ export interface ApiDocUserAclDocUserAcl extends Struct.CollectionTypeSchema {
     createdBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
       Schema.Attribute.Private;
     ctime: Schema.Attribute.DateTime;
-    docId: Schema.Attribute.BigInteger & Schema.Attribute.Required;
+    docId: Schema.Attribute.String & Schema.Attribute.Required;
     locale: Schema.Attribute.String & Schema.Attribute.Private;
     localizations: Schema.Attribute.Relation<
       'oneToMany',
@@ -622,7 +621,7 @@ export interface ApiDocUserAclDocUserAcl extends Struct.CollectionTypeSchema {
 
 export interface ApiDocUserActivityDocUserActivity
   extends Struct.CollectionTypeSchema {
-  collectionName: 'doc_user_activities';
+  collectionName: 'doc_user_activity';
   info: {
     displayName: 'DocUserActivity';
     pluralName: 'doc-user-activities';
@@ -636,7 +635,7 @@ export interface ApiDocUserActivityDocUserActivity
     createdBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
       Schema.Attribute.Private;
     ctime: Schema.Attribute.DateTime;
-    docId: Schema.Attribute.BigInteger & Schema.Attribute.Required;
+    docId: Schema.Attribute.String & Schema.Attribute.Required;
     lastEditedAt: Schema.Attribute.DateTime;
     lastViewedAt: Schema.Attribute.DateTime;
     locale: Schema.Attribute.String & Schema.Attribute.Private;
@@ -655,12 +654,12 @@ export interface ApiDocUserActivityDocUserActivity
       Schema.Attribute.SetMinMaxLength<{
         maxLength: 64;
       }>;
-    visitCount: Schema.Attribute.Integer & Schema.Attribute.DefaultTo<0>;
+    visitCount: Schema.Attribute.BigInteger & Schema.Attribute.DefaultTo<0>;
   };
 }
 
 export interface ApiDocDoc extends Struct.CollectionTypeSchema {
-  collectionName: 'docs';
+  collectionName: 'doc';
   info: {
     displayName: 'Doc';
     pluralName: 'docs';
@@ -705,7 +704,7 @@ export interface ApiDocDoc extends Struct.CollectionTypeSchema {
 }
 
 export interface ApiSpaceDeptSpaceDept extends Struct.CollectionTypeSchema {
-  collectionName: 'space_depts';
+  collectionName: 'space_dept';
   info: {
     displayName: 'SpaceDept';
     pluralName: 'space-depts';
@@ -719,7 +718,7 @@ export interface ApiSpaceDeptSpaceDept extends Struct.CollectionTypeSchema {
     createdBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
       Schema.Attribute.Private;
     ctime: Schema.Attribute.DateTime;
-    dept_id: Schema.Attribute.BigInteger;
+    dept_id: Schema.Attribute.String;
     locale: Schema.Attribute.String & Schema.Attribute.Private;
     localizations: Schema.Attribute.Relation<
       'oneToMany',
@@ -728,7 +727,7 @@ export interface ApiSpaceDeptSpaceDept extends Struct.CollectionTypeSchema {
       Schema.Attribute.Private;
     mtime: Schema.Attribute.DateTime;
     publishedAt: Schema.Attribute.DateTime;
-    space_id: Schema.Attribute.BigInteger;
+    space_id: Schema.Attribute.String;
     updatedAt: Schema.Attribute.DateTime;
     updatedBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
       Schema.Attribute.Private;
@@ -736,16 +735,20 @@ export interface ApiSpaceDeptSpaceDept extends Struct.CollectionTypeSchema {
 }
 
 export interface ApiSpaceFolderSpaceFolder extends Struct.CollectionTypeSchema {
-  collectionName: 'space_folders';
+  collectionName: 'space_folder';
   info: {
     displayName: 'SpaceFolder';
     pluralName: 'space-folders';
     singularName: 'space-folder';
   };
   options: {
-    draftAndPublish: true;
+    draftAndPublish: false;
   };
   attributes: {
+    children: Schema.Attribute.Relation<
+      'oneToMany',
+      'api::space-folder.space-folder'
+    >;
     createdAt: Schema.Attribute.DateTime;
     createdBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
       Schema.Attribute.Private;
@@ -764,9 +767,13 @@ export interface ApiSpaceFolderSpaceFolder extends Struct.CollectionTypeSchema {
         maxLength: 128;
       }>;
     order: Schema.Attribute.Integer & Schema.Attribute.DefaultTo<0>;
-    parentId: Schema.Attribute.BigInteger & Schema.Attribute.DefaultTo<'0'>;
+    parent: Schema.Attribute.Relation<
+      'manyToOne',
+      'api::space-folder.space-folder'
+    >;
+    parentId: Schema.Attribute.String & Schema.Attribute.DefaultTo<'0'>;
     publishedAt: Schema.Attribute.DateTime;
-    spaceId: Schema.Attribute.BigInteger;
+    spaceId: Schema.Attribute.String;
     updatedAt: Schema.Attribute.DateTime;
     updatedBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
       Schema.Attribute.Private;
@@ -776,7 +783,7 @@ export interface ApiSpaceFolderSpaceFolder extends Struct.CollectionTypeSchema {
 }
 
 export interface ApiSpaceSpace extends Struct.CollectionTypeSchema {
-  collectionName: 'spaces';
+  collectionName: 'space';
   info: {
     displayName: 'Space';
     pluralName: 'spaces';
@@ -821,7 +828,7 @@ export interface ApiSpaceSpace extends Struct.CollectionTypeSchema {
         maxLength: 128;
       }>;
     publishedAt: Schema.Attribute.DateTime;
-    space_type: Schema.Attribute.Integer;
+    spaceType: Schema.Attribute.Integer;
     updatedAt: Schema.Attribute.DateTime;
     updatedBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
       Schema.Attribute.Private;
@@ -830,7 +837,7 @@ export interface ApiSpaceSpace extends Struct.CollectionTypeSchema {
 
 export interface ApiUserSpaceAuthUserSpaceAuth
   extends Struct.CollectionTypeSchema {
-  collectionName: 'user_space_auths';
+  collectionName: 'user_space_auth';
   info: {
     displayName: 'UserSpaceAuth';
     pluralName: 'user-space-auths';
@@ -858,7 +865,7 @@ export interface ApiUserSpaceAuthUserSpaceAuth
     publishedAt: Schema.Attribute.DateTime;
     source: Schema.Attribute.Enumeration<['AUTO_INIT', 'MANUAL']> &
       Schema.Attribute.DefaultTo<'MANUAL'>;
-    spaceId: Schema.Attribute.BigInteger & Schema.Attribute.Required;
+    spaceId: Schema.Attribute.String & Schema.Attribute.Required;
     superAdmin: Schema.Attribute.Boolean & Schema.Attribute.DefaultTo<false>;
     updatedAt: Schema.Attribute.DateTime;
     updatedBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &

@@ -1,6 +1,6 @@
 import { PaladinService } from '@bilibili/config-sdk'
-import { PaladinServiceInput } from '@bilibili/config-sdk/src/types/index.js'
-import { env } from '../config/env.js'
+import { PaladinServiceInput } from '@bilibili/config-sdk/src/types/index'
+import { env } from '../config/env'
 import _ from 'lodash'
 // import logger from './logger'
 

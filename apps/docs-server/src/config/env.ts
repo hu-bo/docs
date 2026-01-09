@@ -1,5 +1,5 @@
 import dotenv from 'dotenv'
-import type { MCPBinding } from '../types.js'
+import type { MCPBinding } from '../types'
 import path from 'node:path'
 
 dotenv.config({path: path.resolve(__dirname, '../../.env')})

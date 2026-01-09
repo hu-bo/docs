@@ -1,9 +1,10 @@
 import { defineConfig } from 'vite';
 import vue from '@vitejs/plugin-vue';
+import tailwindcss from '@tailwindcss/vite';
 import { fileURLToPath, URL } from 'node:url';
 
 export default defineConfig({
-  plugins: [vue()],
+  plugins: [tailwindcss(), vue()],
   resolve: {
     alias: {
       '@': fileURLToPath(new URL('./src', import.meta.url)),
@@ -15,7 +16,7 @@ export default defineConfig({
     allowedHosts: ['ff-dev.bilibili.co', 'localhost', '127.0.0.1'],
     proxy: {
       '/api': {
-        target: 'http://127.0.0.1:3002',
+        target: 'http://127.0.0.1:3000',
         changeOrigin: true,
       },
       '/ws/': {

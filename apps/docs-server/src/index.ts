@@ -1,7 +1,8 @@
 import http from 'http'
 import moment from 'moment'
-import { env } from './config/env.js'
-import { App, createServer } from './server.js'
+import { env } from './config/env'
+import { App, createServer } from './server'
+import { setupWebSocket, closeWebSocket } from './websocket/ws'
 
 declare global {
     namespace Express {
@@ -38,9 +39,13 @@ async function start() {
         // Create HTTP server
         httpServer = http.createServer(app.app)
 
+        // Setup WebSocket server
+        setupWebSocket(httpServer)
+
         // Start listening
         httpServer.listen(env.port, () => {
-            console.log(`[${moment().format('HH:mm:ss')}][server]: Server is listening on port ${env.port}`)
+            console.log(`[${moment().format('HH:mm:ss')}][server]: HTTP listening on http://localhost:${env.port}`)
+            console.log(`[${moment().format('HH:mm:ss')}][server]: WS listening on ws://localhost:${env.port}/collab`)
         })
 
         // Handle server errors
@@ -80,6 +85,9 @@ async function gracefulShutdown(signal: string) {
             console.log(`[${moment().format('HH:mm:ss')}][server]: HTTP server closed`)
         })
     }
+
+    // Close WebSocket server and collab server
+    await closeWebSocket()
 
     // Clean up application resources
     if (app?.stopApp) {

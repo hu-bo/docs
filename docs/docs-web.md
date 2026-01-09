@@ -1,7 +1,7 @@
 # docs-web 项目文档
 
 ## 项目概述
-
+参考/Users/hubo/Work/Coding/MyProject/docs/apps/knowledge-workspace-ui（gemini生成的react项目，需要转为vue）
 **docs-web** 是"向日葵文档系统"的前端应用，基于 Vue 3 构建的协作文档管理平台。提供空间管理、文档编辑、权限控制、评论协作、实时协同编辑等功能的用户界面。
 
 - **项目名称**: 向日葵文档
@@ -58,7 +58,7 @@ docs-web/
 │   │   └── index.ts               # 路由定义和守卫
 │   │
 │   ├── views/                     # 页面组件
-│   │   ├── Home.vue               # 首页
+│   │   ├── Home.vue               # 首页 参考/Users/hubo/Work/Coding/MyProject/docs/apps/knowledge-workspace-ui（需改为vue版本）
 │   │   ├── NotFound.vue           # 404 页面
 │   │   ├── space/
 │   │   │   ├── SpaceList.vue      # 空间列表
@@ -67,7 +67,7 @@ docs-web/
 │   │   │   ├── SpaceMembers.vue   # 成员管理
 │   │   │   └── SpaceAccessDenied.vue # 访问申请
 │   │   └── document/
-│   │       ├── DocumentView.vue   # 文档查看
+│   │       ├── DocumentView.vue   # 文档查看(评论在右侧)
 │   │       ├── DocumentEdit.vue   # 文档编辑(含协同)
 │   │       ├── DocumentMembers.vue # 文档成员
 │   │       └── DocumentSpaces.vue  # 多空间绑定
@@ -77,6 +77,7 @@ docs-web/
 │   │
 │   ├── components/                # 可复用组件
 │   │   ├── MemberList.vue         # 成员列表组件
+│   │   ├── Comment.vue            # 文档评论
 │   │   ├── FolderPermissionModal.vue # 文件夹权限弹窗
 │   │   └── editor/
 │   │       ├── TiptapEditor.vue   # Tiptap 编辑器组件
@@ -614,10 +615,11 @@ const {
   handleCreate,      // 提交创建
 } = useCreateDocument();
 ```
-
+### TipTap多人协作
+参考：/Users/hubo/Work/Coding/MyProject/docs/docs/TipTap.md
 ---
 
-## API 层
+## API 层å
 
 ### 请求配置
 **文件**: `api/request.ts`

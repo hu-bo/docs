@@ -11,7 +11,7 @@
     "lint": "eslint . --ext .vue,.js,.jsx,.cjs,.mjs,.ts,.tsx,.cts,.mts --fix"
   },
   "dependencies": {
-    "@ant-design/icons-vue": "^7.0.1",
+    "@hocuspocus/provider": "^2.13.0",
     "@tiptap/core": "^3.14.0",
     "@tiptap/extension-code-block-lowlight": "^3.14.0",
     "@tiptap/extension-collaboration": "^3.14.0",
@@ -25,20 +25,26 @@
     "@tiptap/pm": "^3.14.0",
     "@tiptap/starter-kit": "^3.14.0",
     "@tiptap/vue-3": "^3.14.0",
-    "ant-design-vue": "^4.2.0",
     "axios": "^1.9.0",
     "dayjs": "^1.11.13",
     "lowlight": "^3.3.0",
+    "lucide-vue-next": "^0.562.0",
     "pinia": "^3.0.0",
     "vue": "^3.5.24",
     "vue-router": "^4.5.0",
-    "y-websocket": "^3.0.0",
-    "yjs": "^13.6.28"
+    "y-indexeddb": "^9.0.12",
+    "yjs": "^13.6.23"
   },
   "devDependencies": {
+    "@tailwindcss/postcss": "^4.1.18",
+    "@tailwindcss/vite": "^4.1.18",
     "@vitejs/plugin-vue": "^6.0.1",
     "@vue/tsconfig": "^0.8.1",
+    "autoprefixer": "^10.4.23",
+    "daisyui": "^5.5.14",
     "less": "^4.2.0",
+    "postcss": "^8.5.6",
+    "tailwindcss": "^4.1.18",
     "typescript": "~5.6.3",
     "vite": "^7.2.4",
     "vue-tsc": "^3.1.4"

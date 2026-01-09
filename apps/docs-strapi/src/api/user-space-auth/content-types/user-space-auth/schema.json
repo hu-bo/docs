@@ -1,6 +1,6 @@
 {
   "kind": "collectionType",
-  "collectionName": "user_space_auths",
+  "collectionName": "user_space_auth",
   "info": {
     "singularName": "user-space-auth",
     "pluralName": "user-space-auths",
@@ -12,7 +12,7 @@
   "pluginOptions": {},
   "attributes": {
     "spaceId": {
-      "type": "biginteger",
+      "type": "string",
       "required": true
     },
     "username": {

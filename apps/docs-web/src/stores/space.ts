@@ -1,46 +1,53 @@
 import { defineStore } from 'pinia';
 import { ref, computed } from 'vue';
+import type { Space, Folder, UserSpaceAuth } from '@/types';
 import * as spaceApi from '@/api/space';
-import type { Space, UserSpaceAuth, PaginatedData, CreateFolderForm, SpaceType } from '@/types';
-import { SPACE_TYPE } from '@/types';
 
 export const useSpaceStore = defineStore('space', () => {
-  // 状态
+  // State
   const spaces = ref<Space[]>([]);
   const spacesTotal = ref(0);
+  const joinedSpaces = ref<Space[]>([]);
+  const joinedSpacesTotal = ref(0);
   const currentSpace = ref<Space | null>(null);
   const currentSpaceMembers = ref<UserSpaceAuth[]>([]);
   const currentUserAuth = ref<UserSpaceAuth | null>(null);
-  const loading = ref(false);
   const personalSpace = ref<Space | null>(null);
+  const folders = ref<Folder[]>([]);
+  const loading = ref(false);
 
-  // 计算属性
-  const isSuperAdmin = computed(() => {
-    return currentUserAuth.value?.superAdmin === true;
-  });
+  // Computed
+  const isSuperAdmin = computed(() => currentUserAuth.value?.superAdmin || false);
+  const canCreateFolder = computed(() => currentUserAuth.value?.canCreateFolder || false);
+  const canCreateDoc = computed(() => currentUserAuth.value?.canCreateDoc || false);
+  const publicSpaces = computed(() => spaces.value.filter(s => s.spaceType === 1));
 
-  const canCreateFolder = computed(() => {
-    if (!currentUserAuth.value) return false;
-    return currentUserAuth.value.superAdmin || currentUserAuth.value.canCreateFolder;
-  });
-
-  const canCreateDoc = computed(() => {
-    if (!currentUserAuth.value) return false;
-    return currentUserAuth.value.superAdmin || currentUserAuth.value.canCreateDoc;
-  });
-
-  // 计算属性 - 公共空间列表
-  const publicSpaces = computed(() => {
-    return spaces.value.filter(s => s.space_type === SPACE_TYPE.PUBLIC);
-  });
-
-  // 操作
-  async function fetchSpaces(page = 1, pageSize = 20, spaceType?: SpaceType) {
+  // Actions
+  async function fetchSpaces(params: { page: number; pageSize: number; type?: number }) {
     loading.value = true;
     try {
-      const result = await spaceApi.getSpaces({ page, pageSize, spaceType }) as unknown as PaginatedData<Space>;
-      spaces.value = result.list;
-      spacesTotal.value = result.total;
+      const data = await spaceApi.getSpaces(params);
+      spaces.value = data.list;
+      spacesTotal.value = data.total;
+      return data;
+    } catch (error) {
+      console.error('Failed to fetch spaces:', error);
+      throw error;
+    } finally {
+      loading.value = false;
+    }
+  }
+
+  async function fetchJoinedSpaces(params?: { page?: number; pageSize?: number }) {
+    loading.value = true;
+    try {
+      const data = await spaceApi.getJoinedSpaces(params);
+      joinedSpaces.value = data.list;
+      joinedSpacesTotal.value = data.total;
+      return data;
+    } catch (error) {
+      console.error('Failed to fetch joined spaces:', error);
+      throw error;
     } finally {
       loading.value = false;
     }
@@ -48,112 +55,205 @@ export const useSpaceStore = defineStore('space', () => {
 
   async function fetchPersonalSpace() {
     try {
-      personalSpace.value = await spaceApi.getOrCreatePersonalSpace() as unknown as Space;
-      return personalSpace.value;
-    } catch {
-      return null;
+      const data = await spaceApi.getOrCreatePersonalSpace();
+      personalSpace.value = data;
+      return data;
+    } catch (error) {
+      console.error('Failed to fetch personal space:', error);
+      throw error;
     }
   }
 
   async function fetchSpaceById(spaceId: string) {
     loading.value = true;
     try {
-      currentSpace.value = await spaceApi.getSpaceById(spaceId) as unknown as Space;
+      const data = await spaceApi.getSpaceById(spaceId);
+      currentSpace.value = data;
+      return data;
+    } catch (error) {
+      console.error('Failed to fetch space:', error);
+      throw error;
     } finally {
       loading.value = false;
     }
   }
 
-  async function createSpace(data: { name: string; codeName: string; icon?: string }) {
-    const result = await spaceApi.createSpace(data) as unknown as Space;
-    spaces.value.unshift(result);
-    return result;
+  async function checkAccessStatus(spaceId: string) {
+    try {
+      const data = await spaceApi.checkAccessStatus(spaceId);
+      if (data.auth) {
+        currentUserAuth.value = data.auth;
+      }
+      return data;
+    } catch (error) {
+      console.error('Failed to check access status:', error);
+      throw error;
+    }
   }
 
-  async function updateSpace(spaceId: string, data: Partial<{ name: string; icon: string }>) {
-    const result = await spaceApi.updateSpace(spaceId, data) as unknown as Space;
-    if (currentSpace.value?.documentId === spaceId) {
-      currentSpace.value = result;
+  async function createSpace(data: Partial<Space> & { deptId: number }) {
+    try {
+      const newSpace = await spaceApi.createSpace(data);
+      spaces.value.unshift(newSpace);
+      return newSpace;
+    } catch (error) {
+      console.error('Failed to create space:', error);
+      throw error;
     }
-    const index = spaces.value.findIndex(s => s.documentId === spaceId);
-    if (index !== -1) {
-      spaces.value[index] = result;
+  }
+
+  async function updateSpace(spaceId: string, data: Partial<Space>) {
+    try {
+      const updated = await spaceApi.updateSpace(spaceId, data);
+      const index = spaces.value.findIndex(s => s.documentId === spaceId);
+      if (index !== -1) {
+        spaces.value[index] = updated;
+      }
+      if (currentSpace.value?.documentId === spaceId) {
+        currentSpace.value = updated;
+      }
+      return updated;
+    } catch (error) {
+      console.error('Failed to update space:', error);
+      throw error;
     }
-    return result;
   }
 
   async function deleteSpace(spaceId: string) {
-    await spaceApi.deleteSpace(spaceId);
-    spaces.value = spaces.value.filter(s => s.documentId !== spaceId);
-    if (currentSpace.value?.documentId === spaceId) {
-      currentSpace.value = null;
+    try {
+      await spaceApi.deleteSpace(spaceId);
+      spaces.value = spaces.value.filter(s => s.documentId !== spaceId);
+      if (currentSpace.value?.documentId === spaceId) {
+        currentSpace.value = null;
+      }
+    } catch (error) {
+      console.error('Failed to delete space:', error);
+      throw error;
     }
   }
 
-  async function fetchSpaceMembers(spaceId: string, page = 1, pageSize = 50) {
-    const result = await spaceApi.getSpaceMembers(spaceId, { page, pageSize }) as unknown as PaginatedData<UserSpaceAuth>;
-    currentSpaceMembers.value = result.list;
-    return result;
+  async function fetchFolders(spaceId: string, parentFolderId?: string) {
+    try {
+      const data = await spaceApi.getFolders(spaceId, parentFolderId);
+      folders.value = data;
+      return data;
+    } catch (error) {
+      console.error('Failed to fetch folders:', error);
+      throw error;
+    }
   }
 
-  async function addMembers(spaceId: string, members: { username: string; canRead?: boolean; canCreateFolder?: boolean; canCreateDoc?: boolean; superAdmin?: boolean }[]) {
-    const result = await spaceApi.addSpaceMembers(spaceId, members) as unknown as UserSpaceAuth[];
-    await fetchSpaceMembers(spaceId);
-    return result;
+  async function createFolder(spaceId: string, data: Partial<Folder>) {
+    try {
+      const newFolder = await spaceApi.createFolder(spaceId, data);
+      folders.value.push(newFolder);
+      return newFolder;
+    } catch (error) {
+      console.error('Failed to create folder:', error);
+      throw error;
+    }
   }
 
-  async function updateMember(spaceId: string, data: { username: string; canRead?: boolean; canCreateFolder?: boolean; canCreateDoc?: boolean; superAdmin?: boolean }) {
-    const result = await spaceApi.updateSpaceMember(spaceId, data) as unknown as UserSpaceAuth;
-    await fetchSpaceMembers(spaceId);
-    return result;
+  async function updateFolder(spaceId: string, folderId: string, data: Partial<Folder>) {
+    try {
+      const updated = await spaceApi.updateFolder(spaceId, folderId, data);
+      const index = folders.value.findIndex(f => f.documentId === folderId);
+      if (index !== -1) {
+        folders.value[index] = updated;
+      }
+      return updated;
+    } catch (error) {
+      console.error('Failed to update folder:', error);
+      throw error;
+    }
   }
 
-  async function removeMembers(spaceId: string, usernames: string[]) {
-    await spaceApi.removeSpaceMembers(spaceId, usernames);
-    currentSpaceMembers.value = currentSpaceMembers.value.filter(m => !usernames.includes(m.username));
+  async function fetchSpaceMembers(spaceId: string, params?: any) {
+    try {
+      const data = await spaceApi.getSpaceMembers(spaceId, params);
+      currentSpaceMembers.value = data;
+      return data;
+    } catch (error) {
+      console.error('Failed to fetch space members:', error);
+      throw error;
+    }
   }
 
-  async function createFolder(spaceId: string, data: CreateFolderForm) {
-    return await spaceApi.createFolder(spaceId, data);
+  async function addMembers(spaceId: string, members: any[]) {
+    try {
+      await spaceApi.addSpaceMembers(spaceId, members);
+      await fetchSpaceMembers(spaceId);
+    } catch (error) {
+      console.error('Failed to add members:', error);
+      throw error;
+    }
+  }
+
+  async function updateMember(spaceId: string, username: string, data: any) {
+    try {
+      await spaceApi.updateSpaceMember(spaceId, username, data);
+      await fetchSpaceMembers(spaceId);
+    } catch (error) {
+      console.error('Failed to update member:', error);
+      throw error;
+    }
+  }
+
+  async function removeMember(spaceId: string, username: string) {
+    try {
+      await spaceApi.removeSpaceMembers(spaceId, username);
+      currentSpaceMembers.value = currentSpaceMembers.value.filter(m => m.username !== username);
+    } catch (error) {
+      console.error('Failed to remove member:', error);
+      throw error;
+    }
   }
 
   function setCurrentUserAuth(auth: UserSpaceAuth | null) {
     currentUserAuth.value = auth;
   }
 
-  function clearCurrentSpace() {
+  function resetCurrentSpace() {
     currentSpace.value = null;
     currentSpaceMembers.value = [];
     currentUserAuth.value = null;
+    folders.value = [];
   }
 
   return {
-    // 状态
+    // State
     spaces,
     spacesTotal,
+    joinedSpaces,
+    joinedSpacesTotal,
     currentSpace,
     currentSpaceMembers,
     currentUserAuth,
-    loading,
     personalSpace,
-    // 计算属性
+    folders,
+    loading,
+    // Computed
     isSuperAdmin,
     canCreateFolder,
     canCreateDoc,
     publicSpaces,
-    // 操作
+    // Actions
     fetchSpaces,
-    fetchSpaceById,
+    fetchJoinedSpaces,
     fetchPersonalSpace,
+    fetchSpaceById,
+    checkAccessStatus,
     createSpace,
     updateSpace,
     deleteSpace,
+    fetchFolders,
+    createFolder,
+    updateFolder,
     fetchSpaceMembers,
     addMembers,
     updateMember,
-    removeMembers,
-    createFolder,
+    removeMember,
     setCurrentUserAuth,
-    clearCurrentSpace,
+    resetCurrentSpace,
   };
 });

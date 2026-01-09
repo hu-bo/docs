@@ -1,6 +1,6 @@
 {
   "kind": "collectionType",
-  "collectionName": "doc_user_acls",
+  "collectionName": "doc_user_acl",
   "info": {
     "singularName": "doc-user-acl",
     "pluralName": "doc-user-acls",
@@ -12,7 +12,7 @@
   "pluginOptions": {},
   "attributes": {
     "docId": {
-      "type": "biginteger",
+      "type": "string",
       "required": true
     },
     "username": {

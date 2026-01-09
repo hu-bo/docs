@@ -1,96 +1,90 @@
 import { defineStore } from 'pinia';
 import { ref } from 'vue';
-import { getCollaborationToken } from '@/api/collaboration';
+import type { ConnectionStatus, CollaborationUser } from '@/types';
+import * as collaborationApi from '@/api/collaboration';
 
-export interface CollaborationUser {
-  clientId: number;
-  username: string;
-  name: string;
-  color: string;
-  avatar?: string;
-}
+// Token cache with TTL
+let tokenCache: { token: string; expiresAt: number } | null = null;
+const TOKEN_TTL = 5 * 60 * 1000; // 5 minutes
 
 export const useCollaborationStore = defineStore('collaboration', () => {
-  // 连接状态
+  // State
   const isConnected = ref(false);
-  const connectionStatus = ref<'connecting' | 'connected' | 'disconnected'>('disconnected');
-
-  // 在线用户
+  const connectionStatus = ref<ConnectionStatus>('disconnected');
   const onlineUsers = ref<CollaborationUser[]>([]);
-
-  // 当前文档 ID
   const currentDocumentId = ref<string | null>(null);
-
-  // WebSocket token 缓存
   const wsToken = ref<string | null>(null);
-  const tokenExpiry = ref<number>(0);
 
-  /**
-   * 获取 WebSocket token
-   * 带缓存，避免重复请求
-   */
-  async function fetchWsToken(): Promise<string> {
-    const now = Date.now();
-
-    // 如果 token 还有效（至少还有 5 分钟），直接返回
-    if (wsToken.value && tokenExpiry.value > now + 5 * 60 * 1000) {
-      return wsToken.value;
+  // Actions
+  async function fetchWsToken(forceRefresh = false): Promise<string> {
+    // Check cache first
+    if (!forceRefresh && tokenCache && Date.now() < tokenCache.expiresAt) {
+      wsToken.value = tokenCache.token;
+      return tokenCache.token;
     }
 
-    // 请求新 token
-    const response = await getCollaborationToken();
-    wsToken.value = response.token;
-    // token 有效期 1 小时
-    tokenExpiry.value = now + 60 * 60 * 1000;
+    try {
+      const data = await collaborationApi.getCollaborationToken();
+      const token = data.token;
 
-    return response.token;
+      // Update cache
+      tokenCache = {
+        token,
+        expiresAt: Date.now() + TOKEN_TTL,
+      };
+
+      wsToken.value = token;
+      return token;
+    } catch (error) {
+      console.error('Failed to fetch collaboration token:', error);
+      throw error;
+    }
   }
 
-  /**
-   * 更新在线用户列表
-   */
+  function getWebSocketUrl(documentId: string, token: string): string {
+    return collaborationApi.getWebSocketUrl(documentId, token);
+  }
+
   function updateOnlineUsers(users: CollaborationUser[]) {
     onlineUsers.value = users;
   }
 
-  /**
-   * 设置连接状态
-   */
-  function setConnectionStatus(status: typeof connectionStatus.value) {
+  function setConnectionStatus(status: ConnectionStatus) {
     connectionStatus.value = status;
     isConnected.value = status === 'connected';
   }
 
-  /**
-   * 设置当前文档 ID
-   */
-  function setCurrentDocument(documentId: string | null) {
+  function setCurrentDocumentId(documentId: string | null) {
     currentDocumentId.value = documentId;
   }
 
-  /**
-   * 重置状态
-   */
   function reset() {
     isConnected.value = false;
     connectionStatus.value = 'disconnected';
     onlineUsers.value = [];
     currentDocumentId.value = null;
+    wsToken.value = null;
+  }
+
+  function clearTokenCache() {
+    tokenCache = null;
+    wsToken.value = null;
   }
 
   return {
-    // 状态
+    // State
     isConnected,
     connectionStatus,
     onlineUsers,
     currentDocumentId,
     wsToken,
-
-    // 方法
+    // Actions
     fetchWsToken,
+    getWebSocketUrl,
     updateOnlineUsers,
     setConnectionStatus,
-    setCurrentDocument,
+    setCurrentDocumentId,
     reset,
+    clearTokenCache,
   };
 });

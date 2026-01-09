@@ -1,6 +1,6 @@
 {
   "kind": "collectionType",
-  "collectionName": "doc_user_activities",
+  "collectionName": "doc_user_activity",
   "info": {
     "singularName": "doc-user-activity",
     "pluralName": "doc-user-activities",
@@ -12,7 +12,7 @@
   "pluginOptions": {},
   "attributes": {
     "docId": {
-      "type": "biginteger",
+      "type": "string",
       "required": true
     },
     "username": {
@@ -24,7 +24,7 @@
       "type": "datetime"
     },
     "visitCount": {
-      "type": "integer",
+      "type": "biginteger",
       "default": 0
     },
     "lastEditedAt": {

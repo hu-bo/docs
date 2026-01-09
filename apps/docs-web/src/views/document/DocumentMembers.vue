@@ -1,271 +1,246 @@
 <script setup lang="ts">
 import { ref, onMounted, computed } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
-import {
-  Card,
-  Table,
-  Button,
-  Tag,
-  Modal,
-  Form,
-  FormItem,
-  Input,
-  Select,
-  SelectOption,
-  Popconfirm,
-  message,
-  Space,
-} from 'ant-design-vue';
-import {
-  PlusOutlined,
-  DeleteOutlined,
-  EditOutlined,
-  ArrowLeftOutlined,
-} from '@ant-design/icons-vue';
-import * as docApi from '@/api/document';
+import { ArrowLeft, UserPlus } from 'lucide-vue-next';
 import { useDocumentStore } from '@/stores/document';
-import type { DocUserAcl, DocMemberForm, DocPerm } from '@/types';
+import { useUserStore } from '@/stores/user';
+import MemberList from '@/components/MemberList.vue';
+import type { DocUserAcl, DocPerm } from '@/types';
 
 const route = useRoute();
 const router = useRouter();
 const documentStore = useDocumentStore();
+const userStore = useUserStore();
 
 const spaceId = computed(() => route.params.spaceId as string);
 const documentId = computed(() => route.params.documentId as string);
 
-const loading = ref(false);
-const members = ref<DocUserAcl[]>([]);
-
-// 添加成员弹窗
-const addModalVisible = ref(false);
-const addForm = ref<DocMemberForm>({
-  username: '',
-  perm: 'READ',
-});
+const showAddMemberModal = ref(false);
+const newMemberUsername = ref('');
+const newMemberPerm = ref<DocPerm>('READ');
 const adding = ref(false);
 
-// 编辑成员弹窗
-const editModalVisible = ref(false);
-const editForm = ref<DocMemberForm>({
-  username: '',
-  perm: 'READ',
-});
-const editing = ref(false);
-
-const columns = [
-  {
-    title: '用户名',
-    dataIndex: 'username',
-    key: 'username',
-  },
-  {
-    title: '权限',
-    dataIndex: 'perm',
-    key: 'perm',
-  },
-  {
-    title: '操作',
-    key: 'action',
-    width: 150,
-  },
-];
+const showEditMemberModal = ref(false);
+const editingMember = ref<DocUserAcl | null>(null);
+const editPerm = ref<DocPerm>('READ');
+const updating = ref(false);
 
 onMounted(async () => {
-  await loadDocument();
-  await loadMembers();
+  await loadData();
 });
 
-async function loadDocument() {
-  if (!documentStore.currentDocument || documentStore.currentDocument.documentId !== documentId.value) {
-    await documentStore.fetchDocumentById(documentId.value);
-  }
+async function loadData() {
+  if (!documentId.value) return;
+
+  await documentStore.fetchDocumentById(documentId.value);
+  await documentStore.fetchDocMembers(documentId.value);
 }
 
-async function loadMembers() {
-  loading.value = true;
-  try {
-    const result = await docApi.getDocMembers(documentId.value) as unknown as { list: DocUserAcl[] };
-    members.value = result.list || [];
-  } catch {
-    members.value = [];
-  } finally {
-    loading.value = false;
-  }
-}
-
-function openAddModal() {
-  addForm.value = { username: '', perm: 'READ' };
-  addModalVisible.value = true;
+function goBack() {
+  router.push({
+    name: 'DocumentView',
+    params: { spaceId: spaceId.value, documentId: documentId.value },
+  });
 }
 
 async function handleAddMember() {
-  if (!addForm.value.username) {
-    message.warning('请输入用户名');
-    return;
-  }
+  if (!newMemberUsername.value.trim()) return;
 
   adding.value = true;
   try {
-    await docApi.addDocMembers(documentId.value, [addForm.value]);
-    message.success('添加成功');
-    addModalVisible.value = false;
-    await loadMembers();
-  } catch {
-    // 错误已在拦截器处理
+    await documentStore.addDocMembers(documentId.value, [{
+      username: newMemberUsername.value.trim(),
+      perm: newMemberPerm.value,
+    }]);
+
+    showAddMemberModal.value = false;
+    newMemberUsername.value = '';
+    newMemberPerm.value = 'READ';
+  } catch (error) {
+    console.error('Failed to add member:', error);
   } finally {
     adding.value = false;
   }
 }
 
-function openEditModal(member: Record<string, unknown>) {
-  editForm.value = {
-    username: String(member.username),
-    perm: member.perm as DocPerm,
-  };
-  editModalVisible.value = true;
+function handleEditMember(member: DocUserAcl) {
+  editingMember.value = member;
+  editPerm.value = member.perm;
+  showEditMemberModal.value = true;
 }
 
-async function handleEditMember() {
-  editing.value = true;
+async function handleUpdateMember() {
+  if (!editingMember.value) return;
+
+  updating.value = true;
   try {
-    await docApi.updateDocMember(documentId.value, editForm.value);
-    message.success('更新成功');
-    editModalVisible.value = false;
-    await loadMembers();
-  } catch {
-    // 错误已在拦截器处理
+    await documentStore.updateDocMember(
+      documentId.value,
+      editingMember.value.username,
+      { perm: editPerm.value }
+    );
+
+    showEditMemberModal.value = false;
+    editingMember.value = null;
+  } catch (error) {
+    console.error('Failed to update member:', error);
   } finally {
-    editing.value = false;
+    updating.value = false;
   }
 }
 
 async function handleRemoveMember(username: string) {
   try {
-    await docApi.removeDocMembers(documentId.value, [username]);
-    message.success('移除成功');
-    await loadMembers();
-  } catch {
-    // 错误已在拦截器处理
+    await documentStore.removeDocMember(documentId.value, username);
+  } catch (error) {
+    console.error('Failed to remove member:', error);
   }
-}
-
-function goBack() {
-  router.push(`/space/${spaceId.value}/doc/${documentId.value}`);
-}
-
-function getPermColor(perm: DocPerm) {
-  return perm === 'EDIT' ? 'blue' : 'default';
-}
-
-function getPermText(perm: DocPerm) {
-  return perm === 'EDIT' ? '可编辑' : '只读';
 }
 </script>
 
 <template>
-  <div class="document-members">
-    <Card>
-      <template #title>
-        <Space>
-          <Button type="text" @click="goBack">
-            <ArrowLeftOutlined />
-          </Button>
-          <span>文档成员管理</span>
-        </Space>
-      </template>
-      <template #extra>
-        <Button type="primary" @click="openAddModal">
-          <PlusOutlined />
-          添加成员
-        </Button>
-      </template>
-
-      <div class="doc-info mb-md">
-        <strong>文档：</strong>{{ documentStore.currentDocument?.title || '无标题' }}
+  <div class="p-6 max-w-4xl mx-auto">
+    <!-- Header -->
+    <div class="flex items-center gap-4 mb-6">
+      <button class="btn btn-ghost btn-square" @click="goBack">
+        <ArrowLeft class="w-5 h-5" />
+      </button>
+      <div class="flex-1">
+        <h1 class="text-xl font-bold">文档成员管理</h1>
+        <p class="text-sm opacity-50 mt-1">
+          {{ documentStore.currentDocument?.title }}
+        </p>
       </div>
+      <button class="btn btn-primary" @click="showAddMemberModal = true">
+        <UserPlus class="w-4 h-4" />
+        添加成员
+      </button>
+    </div>
 
-      <Table
-        :columns="columns"
-        :data-source="members"
-        :loading="loading"
-        :pagination="false"
-        row-key="id"
-      >
-        <template #bodyCell="{ column, record }">
-          <template v-if="column.key === 'perm'">
-            <Tag :color="getPermColor(record.perm)">
-              {{ getPermText(record.perm) }}
-            </Tag>
-          </template>
-          <template v-else-if="column.key === 'action'">
-            <Space>
-              <Button type="link" size="small" @click="openEditModal(record)">
-                <EditOutlined />
-              </Button>
-              <Popconfirm
-                title="确定要移除该成员吗？"
-                @confirm="handleRemoveMember(record.username)"
+    <!-- Info Box -->
+    <div class="alert alert-info mb-6">
+      <span>
+        添加到此列表的用户将根据其权限级别获得对文档的访问权限。
+        当文档设置为"白名单"模式时，只有此列表中的用户才能访问。
+      </span>
+    </div>
+
+    <!-- Members List -->
+    <div class="card bg-base-100 shadow-sm">
+      <div class="card-body">
+        <MemberList
+          :members="documentStore.documentMembers"
+          type="document"
+          :current-username="userStore.username"
+          :can-edit="true"
+          @edit="handleEditMember"
+          @remove="handleRemoveMember"
+        />
+      </div>
+    </div>
+
+    <!-- Add Member Modal -->
+    <dialog class="modal" :class="{ 'modal-open': showAddMemberModal }">
+      <div class="modal-box">
+        <h3 class="font-bold text-lg">添加成员</h3>
+
+        <div class="py-4 space-y-4">
+          <div class="form-control">
+            <label class="label">
+              <span class="label-text">用户名</span>
+            </label>
+            <input
+              v-model="newMemberUsername"
+              type="text"
+              placeholder="输入用户名"
+              class="input input-bordered"
+            />
+          </div>
+
+          <div class="form-control">
+            <label class="label">
+              <span class="label-text">权限级别</span>
+            </label>
+            <div class="flex gap-4">
+              <label
+                class="label cursor-pointer flex-1 justify-start gap-4 border rounded-lg p-4"
+                :class="{ 'border-info bg-info/10': newMemberPerm === 'READ' }"
               >
-                <Button type="link" size="small" danger>
-                  <DeleteOutlined />
-                </Button>
-              </Popconfirm>
-            </Space>
-          </template>
-        </template>
-      </Table>
-    </Card>
+                <input type="radio" v-model="newMemberPerm" value="READ" class="radio radio-info" />
+                <div>
+                  <p class="font-medium">只读</p>
+                  <p class="text-xs opacity-60">只能查看</p>
+                </div>
+              </label>
 
-    <!-- 添加成员弹窗 -->
-    <Modal
-      v-model:open="addModalVisible"
-      title="添加成员"
-      :confirm-loading="adding"
-      @ok="handleAddMember"
-    >
-      <Form layout="vertical">
-        <FormItem label="用户名" required>
-          <Input v-model:value="addForm.username" placeholder="请输入用户名" />
-        </FormItem>
-        <FormItem label="权限">
-          <Select v-model:value="addForm.perm">
-            <SelectOption value="READ">只读</SelectOption>
-            <SelectOption value="EDIT">可编辑</SelectOption>
-          </Select>
-        </FormItem>
-      </Form>
-    </Modal>
+              <label
+                class="label cursor-pointer flex-1 justify-start gap-4 border rounded-lg p-4"
+                :class="{ 'border-success bg-success/10': newMemberPerm === 'EDIT' }"
+              >
+                <input type="radio" v-model="newMemberPerm" value="EDIT" class="radio radio-success" />
+                <div>
+                  <p class="font-medium">编辑</p>
+                  <p class="text-xs opacity-60">可以编辑</p>
+                </div>
+              </label>
+            </div>
+          </div>
+        </div>
 
-    <!-- 编辑成员弹窗 -->
-    <Modal
-      v-model:open="editModalVisible"
-      title="编辑成员权限"
-      :confirm-loading="editing"
-      @ok="handleEditMember"
-    >
-      <Form layout="vertical">
-        <FormItem label="用户名">
-          <Input :value="editForm.username" disabled />
-        </FormItem>
-        <FormItem label="权限">
-          <Select v-model:value="editForm.perm">
-            <SelectOption value="READ">只读</SelectOption>
-            <SelectOption value="EDIT">可编辑</SelectOption>
-          </Select>
-        </FormItem>
-      </Form>
-    </Modal>
+        <div class="modal-action">
+          <button class="btn" @click="showAddMemberModal = false">取消</button>
+          <button class="btn btn-primary" :disabled="adding" @click="handleAddMember">
+            <span v-if="adding" class="loading loading-spinner loading-sm"></span>
+            添加
+          </button>
+        </div>
+      </div>
+      <form method="dialog" class="modal-backdrop">
+        <button @click="showAddMemberModal = false">close</button>
+      </form>
+    </dialog>
+
+    <!-- Edit Member Modal -->
+    <dialog class="modal" :class="{ 'modal-open': showEditMemberModal }">
+      <div class="modal-box">
+        <h3 class="font-bold text-lg">编辑成员权限</h3>
+        <p class="opacity-60 py-2">{{ editingMember?.username }}</p>
+
+        <div class="py-4 flex gap-4">
+          <label
+            class="label cursor-pointer flex-1 justify-start gap-4 border rounded-lg p-4"
+            :class="{ 'border-info bg-info/10': editPerm === 'READ' }"
+          >
+            <input type="radio" v-model="editPerm" value="READ" class="radio radio-info" />
+            <div>
+              <p class="font-medium">只读</p>
+              <p class="text-xs opacity-60">只能查看</p>
+            </div>
+          </label>
+
+          <label
+            class="label cursor-pointer flex-1 justify-start gap-4 border rounded-lg p-4"
+            :class="{ 'border-success bg-success/10': editPerm === 'EDIT' }"
+          >
+            <input type="radio" v-model="editPerm" value="EDIT" class="radio radio-success" />
+            <div>
+              <p class="font-medium">编辑</p>
+              <p class="text-xs opacity-60">可以编辑</p>
+            </div>
+          </label>
+        </div>
+
+        <div class="modal-action">
+          <button class="btn" @click="showEditMemberModal = false">取消</button>
+          <button class="btn btn-primary" :disabled="updating" @click="handleUpdateMember">
+            <span v-if="updating" class="loading loading-spinner loading-sm"></span>
+            保存
+          </button>
+        </div>
+      </div>
+      <form method="dialog" class="modal-backdrop">
+        <button @click="showEditMemberModal = false">close</button>
+      </form>
+    </dialog>
   </div>
 </template>
-
-<style lang="less" scoped>
-.document-members {
-  padding: 24px;
-  max-width: 800px;
-  margin: 0 auto;
-}
-
-.doc-info {
-  color: rgba(0, 0, 0, 0.65);
-}
-</style>

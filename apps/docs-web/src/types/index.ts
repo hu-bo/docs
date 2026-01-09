@@ -1,31 +1,44 @@
-// ============ 用户相关 ============
-export interface UserInfo {
-  username: string;
-  department?: string;
-  deptId?: string;
+// API Response Types
+export interface APIResponse<T = any> {
+  code: number;
+  message: string;
+  data: T;
 }
 
-// ============ 空间相关 ============
-// 空间类型: 1=公共空间, 2=个人空间
-export type SpaceType = 1 | 2;
-export const SPACE_TYPE = {
-  PUBLIC: 1 as SpaceType,
-  PERSONAL: 2 as SpaceType,
-};
+export interface PageResult<T> {
+  list: T[];
+  total: number;
+  page: number;
+  pageSize: number;
+}
+
+// User Types
+export interface UserInfo {
+  name: string;
+  nick_name?: string;
+  avatar: string;
+  dept_id: number;
+  workcode: string
+}
+
+// Space Types
+export type SpaceType = 1 | 2; // 1=公共空间, 2=个人空间
 
 export interface Space {
-  id: string;
+  id: number;
   documentId: string;
   name: string;
   codeName: string;
   creator: string;
   icon: string;
   datasetId: string;
-  space_type: SpaceType;
+  spaceType: SpaceType;
   isDeleted: boolean;
   ctime: string;
   mtime: string;
 }
+
+export type FolderVisibility = 'ALL' | 'DEPT_ONLY';
 
 export interface Folder {
   id: string;
@@ -33,14 +46,14 @@ export interface Folder {
   spaceId: string;
   parentId: string;
   name: string;
-  visibilityScope: 'ALL' | 'DEPT_ONLY';
+  visibilityScope: FolderVisibility;
   order: number;
   isDeleted: boolean;
   ctime: string;
   mtime: string;
 }
 
-// ============ 文档相关 ============
+// Document Types
 export type AccessMode = 'OPEN_EDIT' | 'OPEN_READONLY' | 'WHITELIST_ONLY';
 
 export interface Doc {
@@ -56,11 +69,9 @@ export interface Doc {
   isDeleted: boolean;
   ctime: string;
   mtime: string;
-  // 权限字段（API返回）
-  hasSpaceAuth?: boolean; // 用户是否在 user-space-auth 表中
+  hasSpaceAuth?: boolean;
 }
 
-// 最近访问的文档
 export interface RecentDoc {
   id: string;
   documentId: string;
@@ -69,24 +80,10 @@ export interface RecentDoc {
   folderId: string;
   mtime: string;
   lastViewedAt: string;
-  spaceName?: string; // 跨空间时有值
+  spaceName?: string;
 }
 
-// ============ 评论相关 ============
-export interface Comment {
-  id: string;
-  documentId: string;
-  docId: string;
-  parentId: string;
-  username: string;
-  content: string;
-  isDeleted: boolean;
-  ctime: string;
-  mtime: string;
-  replies?: Comment[];
-}
-
-// ============ 权限相关 ============
+// Permission Types
 export type PermSource = 'AUTO_INIT' | 'MANUAL';
 export type DocPerm = 'READ' | 'EDIT';
 
@@ -100,7 +97,6 @@ export interface UserSpaceAuth {
   canCreateDoc: boolean;
   superAdmin: boolean;
   source: PermSource;
-  isDeleted: boolean;
   ctime: string;
   mtime: string;
 }
@@ -111,7 +107,6 @@ export interface DocUserAcl {
   docId: string;
   username: string;
   perm: DocPerm;
-  isDeleted: boolean;
   ctime: string;
   mtime: string;
 }
@@ -125,71 +120,7 @@ export interface DocSpaceBinding {
   isPrimary: boolean;
 }
 
-// ============ 树形结构 ============
-export interface TreeNode {
-  key: string;
-  title: string;
-  type: 'folder' | 'doc';
-  data: Folder | Doc;
-  children?: TreeNode[];
-  isLeaf?: boolean;
-}
-
-// ============ API 响应格式 ============
-export interface ApiResponse<T = unknown> {
-  code: number;
-  message: string;
-  data: T;
-}
-
-export interface PaginatedData<T = unknown> {
-  list: T[];
-  total: number;
-  page: number;
-  pageSize: number;
-}
-
-export interface PaginatedResponse<T = unknown> {
-  code: number;
-  message: string;
-  data: PaginatedData<T>;
-}
-
-// ============ 表单相关 ============
-export interface CreateSpaceForm {
-  name: string;
-  codeName: string;
-  icon?: string;
-}
-
-export interface CreateDocForm {
-  spaceId: string;
-  folderId?: string;
-  title: string;
-  content?: string;
-  accessMode?: AccessMode;
-}
-
-export interface CreateFolderForm {
-  name: string;
-  parentId?: string;
-  visibilityScope?: 'ALL' | 'DEPT_ONLY';
-}
-
-export interface SpaceMemberForm {
-  username: string;
-  canRead?: boolean;
-  canCreateFolder?: boolean;
-  canCreateDoc?: boolean;
-  superAdmin?: boolean;
-}
-
-export interface DocMemberForm {
-  username: string;
-  perm: DocPerm;
-}
-
-// ============ 权限申请相关 ============
+// Access Request Types
 export type AccessRequestType = 'SPACE' | 'DOC';
 export type AccessRequestStatus = 'PENDING' | 'APPROVED' | 'REJECTED';
 
@@ -204,7 +135,41 @@ export interface AccessRequest {
   status: AccessRequestStatus;
   reviewedBy: string | null;
   reviewedAt: string | null;
+  ctime: string;
+  mtime: string;
+}
+
+// Comment Types
+export interface Comment {
+  id: string;
+  documentId: string;
+  docId: string;
+  parentId: string | null;
+  username: string;
+  content: string;
   isDeleted: boolean;
   ctime: string;
   mtime: string;
+  replies?: Comment[];
+  userInfo?: UserInfo;
+}
+
+// Tree Node Types
+export interface TreeNode {
+  key: string;
+  title: string;
+  type: 'folder' | 'doc';
+  data: Folder | Doc;
+  children?: TreeNode[];
+  isLeaf?: boolean;
+}
+
+// Collaboration Types
+export type ConnectionStatus = 'connecting' | 'connected' | 'disconnected';
+
+export interface CollaborationUser {
+  username: string;
+  displayName?: string;
+  avatar?: string;
+  color: string;
 }

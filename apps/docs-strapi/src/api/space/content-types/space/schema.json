@@ -1,6 +1,6 @@
 {
   "kind": "collectionType",
-  "collectionName": "spaces",
+  "collectionName": "space",
   "info": {
     "singularName": "space",
     "pluralName": "spaces",
@@ -46,7 +46,7 @@
     "mtime": {
       "type": "datetime"
     },
-    "space_type": {
+    "spaceType": {
       "type": "integer"
     }
   }

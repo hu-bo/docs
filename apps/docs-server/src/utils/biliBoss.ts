@@ -1,11 +1,11 @@
 import AWS from 'aws-sdk'
 import fs from 'fs'
-import { createBiliConfig } from './biliConfig.js'
-import { nanoid } from './nanoid.js'
+import { createBiliConfig } from './biliConfig'
+import { nanoid } from './nanoid'
 import path from 'path'
 import { readFile } from 'node:fs/promises'
 const chardet = require('chardet')
-import { opsLogger } from './biliLogger.js'
+import { opsLogger } from './biliLogger'
 import Jimp from 'jimp'
 
 let biliBoss: BiliBoss

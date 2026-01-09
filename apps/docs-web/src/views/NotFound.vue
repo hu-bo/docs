@@ -1,34 +1,7 @@
-<script setup lang="ts">
-import { useRouter } from 'vue-router';
-import { Result, Button } from 'ant-design-vue';
-import MainLayout from '@/layouts/MainLayout.vue';
-
-const router = useRouter();
-</script>
-
 <template>
-  <MainLayout>
-    <div class="not-found-page">
-      <Result
-        status="404"
-        title="404"
-        sub-title="抱歉，您访问的页面不存在"
-      >
-        <template #extra>
-          <Button type="primary" @click="router.push('/')">
-            返回首页
-          </Button>
-        </template>
-      </Result>
-    </div>
-  </MainLayout>
+  <div class="p-8 text-center">
+    <h1 class="text-4xl font-bold mb-4">404</h1>
+    <p>页面未找到</p>
+    <router-link to="/" class="text-primary mt-4 inline-block">返回首页</router-link>
+  </div>
 </template>
-
-<style lang="less" scoped>
-.not-found-page {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  min-height: calc(100vh - 64px);
-}
-</style>

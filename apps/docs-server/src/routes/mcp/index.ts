@@ -1,6 +1,6 @@
 // import { Router } from 'express'
-// import mcp from '../../controllers/mcp/index.js'
-// import permit from '../../middlewares/permit.js'
+// import mcp from '../../controllers/mcp/index
+// import permit from '../../middlewares/permit
 
 // const router: Router = Router()
 

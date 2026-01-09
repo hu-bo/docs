@@ -1,34 +1,20 @@
 import request from './request';
+import type { UserInfo } from '@/types';
 
-export interface OAUserInfo {
-  name: string;
-  login_id: string;
-  nick_name: string;
-  manager: string;
-  dept_id: number;
-  department_name: string;
-  avatar: string;
-  workcode: string;
-  other_group: number;
-}
-
-/**
- * 获取当前用户信息 (从 OA 系统)
- */
 export function getCurrentUser() {
-  return request.get<OAUserInfo>('/user/current');
+  return request.get<any, UserInfo>('/user/current');
 }
 
-/**
- * 切换 mock 用户 (仅本地开发环境有效)
- */
+// Development only
 export function switchMockUser(username: string) {
-  return request.post<{ username: string }>('/user/mock', { username });
+  return request.post('/user/mock', { username });
 }
 
-/**
- * 获取可用的 mock 用户列表 (仅本地开发环境有效)
- */
 export function getMockUsers() {
-  return request.get<string[]>('/user/mock/list');
+  return request.get<any, UserInfo[]>('/user/mock-users');
+}
+
+// Development only - clear mock user and use real account
+export function clearMockUser() {
+  return request.delete<any, UserInfo>('/user/mock');
 }

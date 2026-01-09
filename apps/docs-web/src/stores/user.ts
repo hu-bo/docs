@@ -1,27 +1,30 @@
 import { defineStore } from 'pinia';
 import { ref, computed } from 'vue';
+import type { UserInfo } from '@/types';
 import * as userApi from '@/api/user';
-import type { OAUserInfo } from '@/api/user';
 
 export const useUserStore = defineStore('user', () => {
-  // 状态
-  const userInfo = ref<OAUserInfo | null>(null);
+  // State
+  const userInfo = ref<UserInfo | null>(null);
   const loading = ref(false);
-  const mockUsers = ref<string[]>([]);
+  const mockUsers = ref<UserInfo[]>([]);
   const isDev = ref(import.meta.env.DEV);
 
-  // 计算属性
+  // Computed
   const isLoggedIn = computed(() => !!userInfo.value);
-  const displayName = computed(() => userInfo.value?.nick_name || userInfo.value?.name || '');
+  const displayName = computed(() => userInfo.value?.nick_name || userInfo.value?.nick_name || '');
   const avatar = computed(() => userInfo.value?.avatar || '');
-  const username = computed(() => userInfo.value?.login_id || userInfo.value?.name || '');
-
-  // 操作
+  const username = computed(() => userInfo.value?.name || '');
+  const deptId = computed(() => userInfo.value?.dept_id || 0);
+  // Actions
   async function fetchCurrentUser() {
     loading.value = true;
     try {
-      userInfo.value = await userApi.getCurrentUser();
+      const data = await userApi.getCurrentUser();
+      userInfo.value = data;
+      return data;
     } catch (error) {
+      console.error('Failed to fetch current user:', error);
       userInfo.value = null;
       throw error;
     } finally {
@@ -30,53 +33,61 @@ export const useUserStore = defineStore('user', () => {
   }
 
   async function fetchMockUsers() {
-    if (!isDev.value) return;
+    if (!isDev.value) return [];
     try {
-      mockUsers.value = await userApi.getMockUsers();
-    } catch {
-      mockUsers.value = [];
+      const data = await userApi.getMockUsers();
+      mockUsers.value = data;
+      return data;
+    } catch (error) {
+      console.error('Failed to fetch mock users:', error);
+      return [];
     }
   }
 
   async function switchUser(targetUsername: string) {
     if (!isDev.value) return;
-    loading.value = true;
     try {
       await userApi.switchMockUser(targetUsername);
       await fetchCurrentUser();
-    } finally {
-      loading.value = false;
+    } catch (error) {
+      console.error('Failed to switch user:', error);
+      throw error;
+    }
+  }
+
+  async function useRealAccount() {
+    if (!isDev.value) return;
+    try {
+      const data = await userApi.clearMockUser();
+      userInfo.value = data;
+      return data;
+    } catch (error) {
+      console.error('Failed to switch to real account:', error);
+      throw error;
     }
   }
 
   function logout() {
     userInfo.value = null;
-    // 生产环境跳转到登录页
-    if (!isDev.value) {
-      window.location.href = '/login';
-    }
-  }
-
-  function clearUser() {
-    userInfo.value = null;
   }
 
   return {
-    // 状态
+    // State
     userInfo,
     loading,
     mockUsers,
     isDev,
-    // 计算属性
+    // Computed
+    deptId,
     isLoggedIn,
     displayName,
     avatar,
     username,
-    // 操作
+    // Actions
     fetchCurrentUser,
     fetchMockUsers,
     switchUser,
+    useRealAccount,
     logout,
-    clearUser,
   };
 });

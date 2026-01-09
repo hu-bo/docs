@@ -1,35 +1,71 @@
-import { NextFunction, Request, Response } from 'express'
-import { createHash } from 'crypto'
-import axios from 'axios'
+import { NextFunction, Request, Response } from "express";
+import { createHash } from "crypto";
+import axios from "axios";
+import type { AuthenticatedRequest, UserInfo } from '../types/index'
+import { unauthorized } from "../utils/response";
 
-interface IVerify {
-    code: number
-    username: string
+interface IVerifyResponse {
+    code: number;
+    username: string;
 }
 
-export default async function (req: Request, res: Response, next: NextFunction) {
-    const hash = createHash('md5')
+// Dashboard config
+const DASHBOARD_CONFIG = {
+    caller: "mlive",
+    apikey: "70f1b6f09cddadb6e97b1b8967712ca5",
+};
+export default async function (
+    req: AuthenticatedRequest,
+    res: Response,
+    next: NextFunction,
+) {
+    const { caller, apikey } = DASHBOARD_CONFIG;
+    const sessionId = req.cookies?._AJSESSIONID;
 
-    const caller = 'mlive'
-    const apiKey = '70f1b6f09cddadb6e97b1b8967712ca5'
-    const ts = new Date().getTime()
-    const sessionId = req.cookies['_AJSESSIONID']
-    const sign = hash.update(`caller=${caller}&session_id=${sessionId}&ts=${ts}${apiKey}`).digest('hex')
-    const url = `http://dashboard-mng.bilibili.co/api/session/verify?ts=${ts}&caller=${caller}&session_id=${sessionId}&sign=${sign}`
+    // 开发/测试环境 Mock 用户模式
+    // 前端通过设置 cookie: mock_user=<username> 来启用 mock 模式
+    if (process.env.NODE_ENV === 'local') {
+        const mockUsername = req.cookies?.mock_user;
+        if (mockUsername) {
+            req.user = {
+                username: mockUsername,
+                department: '技术中心',
+                deptId: 1001,
+            };
+            return next();
+        }
+        // local 环境但没有 mock_user cookie，继续走正常流程或使用默认用户
+        if (!sessionId) {
+            req.user = {
+                username: 'dev_user',
+                department: '技术中心',
+                deptId: 1001,
+            };
+            return next();
+        }
+    }
+    if (!sessionId) {
+        return unauthorized(res, "请先登录");
+    }
 
-    const { data, status } = await axios.get<IVerify>(url, {
-        responseType: 'json'
-    })
+    const ts = Date.now();
+    const sign = createHash("md5")
+        .update(`caller=${caller}&session_id=${sessionId}&ts=${ts}${apikey}`)
+        .digest("hex");
 
-    const username = req.cookies['username']
+    const url = `http://dashboard-mng.bilibili.co/api/session/verify?ts=${ts}&caller=${caller}&session_id=${sessionId}&sign=${sign}`;
 
+    const { data, status } = await axios.get<IVerifyResponse>(url, {
+        timeout: 5000,
+    });
+
+    const username = req.cookies["username"];
     if (status === 200 && data.code === 0 && data.username === username) {
-        next()
+        req.user = {
+            username: data.username,
+        };;
+        next();
     } else {
-        // 抛出Error给全局错误捕获
-        return res.json({
-            code: 301,
-            message: '帐号未登录'
-        })
+        return unauthorized(res, "登录已过期，请重新登录");
     }
 }

@@ -1,161 +1,133 @@
-import { generateJSON, generateHTML } from '@tiptap/core';
-import StarterKit from '@tiptap/starter-kit';
-import Link from '@tiptap/extension-link';
-import Image from '@tiptap/extension-image';
-import Highlight from '@tiptap/extension-highlight';
-import CodeBlockLowlight from '@tiptap/extension-code-block-lowlight';
-import Placeholder from '@tiptap/extension-placeholder';
-import { TextStyle } from '@tiptap/extension-text-style';
-import Color from '@tiptap/extension-color';
-import { common, createLowlight } from 'lowlight';
-import type { JSONContent } from '@tiptap/core';
-
-// 创建 lowlight 实例用于代码高亮
-const lowlight = createLowlight(common);
+/**
+ * Content format converter utilities
+ * Converts between different content formats (HTML, Markdown, Plain text)
+ */
 
 /**
- * 用于内容转换的扩展列表
- * 注意：这里不包含协作相关扩展，只用于内容序列化/反序列化
+ * Strip HTML tags and return plain text
  */
-export const contentExtensions = [
-  StarterKit.configure({
-    codeBlock: false, // 使用 CodeBlockLowlight 替代
-  }),
-  Link.configure({
-    openOnClick: false,
-  }),
-  Image,
-  Highlight.configure({
-    multicolor: true,
-  }),
-  CodeBlockLowlight.configure({
-    lowlight,
-  }),
-  TextStyle,
-  Color,
-  Placeholder.configure({
-    placeholder: '开始编写内容...',
-  }),
-];
+export function htmlToPlainText(html: string): string {
+  if (!html) return '';
 
-/**
- * 检测内容格式
- */
-export function detectContentFormat(content: string): 'html' | 'json' | 'empty' {
-  if (!content || content.trim() === '') {
-    return 'empty';
-  }
+  // Create a temporary element to parse HTML
+  const tempDiv = document.createElement('div');
+  tempDiv.innerHTML = html;
 
-  const trimmed = content.trim();
-
-  // 尝试解析为 JSON
-  if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
-    try {
-      const parsed = JSON.parse(trimmed);
-      if (parsed.type === 'doc') {
-        return 'json';
-      }
-    } catch {
-      // 解析失败，视为 HTML
-    }
-  }
-
-  return 'html';
+  // Get text content
+  return tempDiv.textContent || tempDiv.innerText || '';
 }
 
 /**
- * 将 HTML 转换为 Tiptap JSON
- * 用于加载旧文档
+ * Truncate text to a maximum length with ellipsis
  */
-export function htmlToTiptapJSON(html: string): JSONContent {
-  if (!html || html.trim() === '') {
-    return createEmptyDoc();
-  }
-
-  try {
-    return generateJSON(html, contentExtensions);
-  } catch (error) {
-    console.error('Failed to convert HTML to JSON:', error);
-    return createEmptyDoc();
-  }
+export function truncateText(text: string, maxLength: number = 100): string {
+  if (!text || text.length <= maxLength) return text;
+  return text.slice(0, maxLength).trim() + '...';
 }
 
 /**
- * 将 Tiptap JSON 转换为 HTML
- * 用于文档预览页面
+ * Extract preview text from HTML content
  */
-export function tiptapJSONToHTML(json: JSONContent): string {
-  try {
-    return generateHTML(json, contentExtensions);
-  } catch (error) {
-    console.error('Failed to convert JSON to HTML:', error);
-    return '';
-  }
+export function getContentPreview(html: string, maxLength: number = 200): string {
+  const plainText = htmlToPlainText(html);
+  return truncateText(plainText, maxLength);
 }
 
 /**
- * 解析内容字符串
- * 自动检测格式并返回 Tiptap JSON
+ * Simple Markdown to HTML converter (basic)
+ * For a full implementation, consider using a library like marked or markdown-it
  */
-export function parseContent(content: string): JSONContent {
-  const format = detectContentFormat(content);
+export function simpleMarkdownToHtml(markdown: string): string {
+  if (!markdown) return '';
 
-  switch (format) {
-    case 'empty':
-      return createEmptyDoc();
+  let html = markdown;
 
-    case 'json':
-      try {
-        return JSON.parse(content);
-      } catch {
-        return createEmptyDoc();
-      }
+  // Headers
+  html = html.replace(/^### (.*$)/gim, '<h3>$1</h3>');
+  html = html.replace(/^## (.*$)/gim, '<h2>$1</h2>');
+  html = html.replace(/^# (.*$)/gim, '<h1>$1</h1>');
 
-    case 'html':
-      return htmlToTiptapJSON(content);
+  // Bold
+  html = html.replace(/\*\*(.*)\*\*/gim, '<strong>$1</strong>');
 
-    default:
-      return createEmptyDoc();
-  }
+  // Italic
+  html = html.replace(/\*(.*)\*/gim, '<em>$1</em>');
+
+  // Links
+  html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/gim, '<a href="$2">$1</a>');
+
+  // Line breaks
+  html = html.replace(/\n/gim, '<br>');
+
+  return html;
 }
 
 /**
- * 序列化 Tiptap JSON 为字符串
+ * Sanitize HTML to prevent XSS
+ * For production, consider using DOMPurify
  */
-export function serializeContent(json: JSONContent): string {
-  return JSON.stringify(json);
+export function sanitizeHtml(html: string): string {
+  if (!html) return '';
+
+  // Basic sanitization - remove script tags
+  let sanitized = html.replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '');
+
+  // Remove on* event handlers
+  sanitized = sanitized.replace(/\s*on\w+="[^"]*"/gi, '');
+  sanitized = sanitized.replace(/\s*on\w+='[^']*'/gi, '');
+
+  return sanitized;
 }
 
 /**
- * 创建空文档
+ * Check if content is empty (only whitespace or empty tags)
  */
-export function createEmptyDoc(): JSONContent {
-  return {
-    type: 'doc',
-    content: [
-      {
-        type: 'paragraph',
-      },
-    ],
-  };
+export function isContentEmpty(html: string): boolean {
+  if (!html) return true;
+
+  const plainText = htmlToPlainText(html);
+  return plainText.trim().length === 0;
 }
 
 /**
- * 检查文档是否为空
+ * Count words in content
  */
-export function isEmptyDoc(json: JSONContent): boolean {
-  if (!json.content || json.content.length === 0) {
-    return true;
-  }
+export function countWords(html: string): number {
+  const plainText = htmlToPlainText(html);
+  if (!plainText.trim()) return 0;
 
-  // 只有一个空段落
-  if (
-    json.content.length === 1 &&
-    json.content[0].type === 'paragraph' &&
-    (!json.content[0].content || json.content[0].content.length === 0)
-  ) {
-    return true;
-  }
+  // Split by whitespace and filter empty strings
+  const words = plainText.trim().split(/\s+/).filter(word => word.length > 0);
+  return words.length;
+}
 
-  return false;
+/**
+ * Count characters in content (excluding HTML tags)
+ */
+export function countCharacters(html: string): number {
+  const plainText = htmlToPlainText(html);
+  return plainText.length;
+}
+
+/**
+ * Estimate reading time in minutes
+ * Assumes average reading speed of 200 words per minute for Chinese
+ * and 250 words per minute for English
+ */
+export function estimateReadingTime(html: string): number {
+  const plainText = htmlToPlainText(html);
+  if (!plainText.trim()) return 0;
+
+  // Count Chinese characters
+  const chineseChars = (plainText.match(/[\u4e00-\u9fff]/g) || []).length;
+
+  // Count English words (non-Chinese text)
+  const englishText = plainText.replace(/[\u4e00-\u9fff]/g, ' ');
+  const englishWords = englishText.trim().split(/\s+/).filter(word => word.length > 0).length;
+
+  // Calculate reading time
+  const chineseReadingTime = chineseChars / 200;
+  const englishReadingTime = englishWords / 250;
+
+  return Math.ceil(chineseReadingTime + englishReadingTime);
 }
