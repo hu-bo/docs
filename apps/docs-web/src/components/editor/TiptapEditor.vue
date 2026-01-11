@@ -1,21 +1,21 @@
 <script setup lang="ts">
-import { ref, watch, onBeforeUnmount, computed } from 'vue';
-import { useEditor, EditorContent } from '@tiptap/vue-3';
+import { ref, watch, onBeforeUnmount, computed, shallowRef } from 'vue';
+import { Editor, EditorContent } from '@tiptap/vue-3';
 import StarterKit from '@tiptap/starter-kit';
 import Placeholder from '@tiptap/extension-placeholder';
 import Link from '@tiptap/extension-link';
 import Image from '@tiptap/extension-image';
-import TextStyle from '@tiptap/extension-text-style';
+import { TextStyle } from '@tiptap/extension-text-style';
 import { Color } from '@tiptap/extension-color';
 import Highlight from '@tiptap/extension-highlight';
 import CodeBlockLowlight from '@tiptap/extension-code-block-lowlight';
 import { common, createLowlight } from 'lowlight';
+import type { Extension } from '@tiptap/core';
 import {
   Bold, Italic, Strikethrough, Code, List, ListOrdered,
   Quote, Minus, Undo, Redo, Link as LinkIcon, Image as ImageIcon,
   Heading1, Heading2, Heading3, Highlighter, Code2,
 } from 'lucide-vue-next';
-import type { Extension } from '@tiptap/core';
 
 const lowlight = createLowlight(common);
 
@@ -34,50 +34,72 @@ const emit = defineEmits<{
 const linkUrl = ref('');
 const showLinkInput = ref(false);
 
-const extensions = computed(() => {
-  const baseExtensions: Extension[] = [
-    StarterKit.configure({
-      history: props.collaborationExtensions?.length ? false : undefined,
-      codeBlock: false,
-    }) as unknown as Extension,
-    Placeholder.configure({
-      placeholder: props.placeholder || '开始输入内容...',
-    }) as unknown as Extension,
-    Link.configure({ openOnClick: false }) as unknown as Extension,
-    Image.configure({ inline: true, allowBase64: true }) as unknown as Extension,
-    TextStyle as unknown as Extension,
-    Color as unknown as Extension,
-    Highlight.configure({ multicolor: true }) as unknown as Extension,
-    CodeBlockLowlight.configure({ lowlight }) as unknown as Extension,
-  ];
+const baseExtensions = [
+  StarterKit.configure({
+    codeBlock: false,
+    // history: props.collaborationExtensions?.length ? false : undefined,
+  }),
+  Placeholder.configure({
+    placeholder: props.placeholder || '开始输入内容...',
+  }),
+  // Link.configure({ openOnClick: false }),
+  Image.configure({ inline: true, allowBase64: true }),
+  TextStyle,
+  Color,
+  Highlight.configure({ multicolor: true }),
+  CodeBlockLowlight.configure({ lowlight }),
+];
 
-  if (props.collaborationExtensions?.length) {
-    return [...baseExtensions, ...props.collaborationExtensions];
+const editor = shallowRef<Editor | undefined>(undefined);
+
+function createEditor() {
+  if (editor.value) {
+    editor.value.destroy();
   }
-  return baseExtensions;
-});
 
-const editor = useEditor({
-  content: props.modelValue || '',
-  extensions: extensions.value,
-  editable: props.editable !== false,
-  editorProps: {
-    attributes: {
-      class: 'prose prose-sm max-w-none focus:outline-none min-h-[300px] p-4',
-      spellcheck: 'false',
+  // When using collaboration, don't set initial content - it comes from Yjs
+  const hasCollab = props.collaborationExtensions && props.collaborationExtensions.length > 0;
+  const initialContent = hasCollab ? '' : (props.modelValue || '');
+
+  editor.value = new Editor({
+    content: initialContent,
+    extensions: baseExtensions,
+    editable: props.editable !== false,
+    editorProps: {
+      attributes: {
+        class: 'prose prose-sm max-w-none focus:outline-none min-h-[300px] p-4',
+        spellcheck: 'false',
+      },
     },
-  },
-  onUpdate: ({ editor }) => {
-    emit('update:modelValue', editor.getHTML());
-  },
-  onBlur: () => {
-    emit('blur');
-  },
+    onUpdate: ({ editor }) => {
+      emit('update:modelValue', editor.getHTML());
+    },
+    onBlur: () => {
+      emit('blur');
+    },
+  });
+}
+
+// Initialize editor
+createEditor();
+
+// Recreate editor when collaboration extensions change
+watch(() => props.collaborationExtensions, (newExtensions, oldExtensions) => {
+  const hadCollab = oldExtensions && oldExtensions.length > 0;
+  const hasCollab = newExtensions && newExtensions.length > 0;
+
+  // Only recreate if collaboration state actually changed
+  if (hadCollab !== hasCollab) {
+    // Use nextTick to ensure extensions are fully initialized
+    setTimeout(() => createEditor(), 0);
+  }
 });
 
 watch(() => props.modelValue, (newValue) => {
-  if (editor.value && newValue !== editor.value.getHTML()) {
-    editor.value.commands.setContent(newValue || '', false);
+  // Don't update content when using collaboration - Yjs handles sync
+  const hasCollab = props.collaborationExtensions && props.collaborationExtensions.length > 0;
+  if (editor.value && !hasCollab && newValue !== editor.value.getHTML()) {
+    editor.value.commands.setContent(newValue || '');
   }
 });
 

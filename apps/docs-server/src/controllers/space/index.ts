@@ -18,7 +18,7 @@ import {
 export async function getSpaces(req: AuthenticatedRequest, res: Response) {
     try {
         const { page, pageSize } = paginationSchema.parse(req.query)
-        const { spaces, total } = await spaceService.getCommunitySpaces(page, pageSize)
+        const { spaces, total } = await spaceService.getCommunitySpaces({ page, pageSize })
         return paginated(res, spaces, total, page, pageSize)
     } catch (error) {
         return errorResponse(res, error)
@@ -46,7 +46,7 @@ export async function getJoinedSpaces(req: AuthenticatedRequest, res: Response) 
     try {
         const username = req.user!.username
         const { page, pageSize } = paginationSchema.parse(req.query)
-        const { spaces, total } = await spaceService.getJoinedSpaces(username, page, pageSize)
+        const { spaces, total } = await spaceService.getJoinedSpaces({ username, page, pageSize })
         return paginated(res, spaces, total, page, pageSize)
     } catch (error) {
         return errorResponse(res, error)
@@ -66,7 +66,7 @@ export async function getSpaceDetail(req: AuthenticatedRequest, res: Response) {
             return notFound(res, '空间不存在')
         }
 
-        const perm = await permissionService.getSpacePermission(username, spaceId)
+        const perm = await permissionService.getSpacePermission({username, space: space})
         if (!perm.canRead) {
             return forbidden(res, '无权访问此空间')
         }
@@ -90,7 +90,7 @@ export async function createSpace(req: AuthenticatedRequest, res: Response) {
         if (await spaceService.isCodeNameExists(input.codeName)) {
             return badRequest(res, '空间代号已存在')
         }
-        const space = await spaceService.createSpace(input, username, String(input.deptId))
+        const space = await spaceService.createSpace({ ...input, username, deptId: String(input.deptId) })
         return successResponse(res, space)
     } catch (error) {
         logger.error('Error creating space:', error)
@@ -154,16 +154,16 @@ export async function deleteSpace(req: AuthenticatedRequest, res: Response) {
 export async function getSpaceFolders(req: AuthenticatedRequest, res: Response) {
     try {
         const spaceId = req.params.spaceId
-        const parentFolderId = (req.query.parentFolderId as string) || '0'
+        const parentFolderId = (req.query.parentFolderId as string) || ''
         const username = req.user!.username
 
-        const perm = await permissionService.getSpacePermission(username, spaceId)
+        const perm = await permissionService.getSpacePermission({username, spaceId: spaceId})
         if (!perm.canRead) {
             return forbidden(res, '无权访问此空间')
         }
 
         const visibleIds = await permissionService.getVisibleFolderIds(username, spaceId)
-        const folders = await spaceService.getSpaceFolders(spaceId, parentFolderId, visibleIds)
+        const folders = await spaceService.getSpaceFolders({ spaceId, parentFolderId, visibleIds })
 
         return successResponse(res, folders)
     } catch (error) {
@@ -184,7 +184,7 @@ export async function syncFromSpaceDept(req: AuthenticatedRequest, res: Response
             return successResponse(res, { synced: 0 })
         }
 
-        const synced = await spaceService.syncFromSpaceDept(username, String(deptId))
+        const synced = await spaceService.syncFromSpaceDept({ username, deptId: String(deptId) })
 
         logger.info(`[Space] Synced ${synced} space permissions for ${username}`)
         return successResponse(res, { synced })
@@ -203,15 +203,14 @@ export async function getSpaceMembers(req: AuthenticatedRequest, res: Response) 
     try {
         const spaceId = req.params.spaceId
         const username = req.user!.username
-        const { page, pageSize } = paginationSchema.parse(req.query)
 
         const isSuperAdmin = await permissionService.isSpaceSuperAdmin(username, spaceId)
         if (!isSuperAdmin) {
             return forbidden(res, '只有空间管理员可以查看成员列表')
         }
 
-        const { members, total } = await spaceService.getSpaceMembers(spaceId, page, pageSize)
-        return paginated(res, members, total, page, pageSize)
+        const members = await spaceService.getSpaceMembers({ spaceId })
+        return successResponse(res, members)
     } catch (error) {
 
         return errorResponse(res, error)
@@ -232,7 +231,7 @@ export async function addSpaceMembers(req: AuthenticatedRequest, res: Response) 
             return forbidden(res, '只有空间管理员可以添加成员')
         }
 
-        const added = await spaceService.addSpaceMembers(spaceId, members)
+        const added = await spaceService.addSpaceMembers({ spaceId, members })
 
         logger.info(`[Space] Added ${added.length} members to space ${spaceId} by ${username}`)
         return successResponse(res, added)
@@ -257,7 +256,7 @@ export async function updateSpaceMember(req: AuthenticatedRequest, res: Response
             return forbidden(res, '只有空间管理员可以修改成员权限')
         }
 
-        const auth = await spaceService.updateSpaceMember(spaceId, memberUsername, input)
+        const auth = await spaceService.updateSpaceMember({ spaceId, username: memberUsername, input })
         if (!auth) {
             return notFound(res, '成员不存在')
         }
@@ -284,7 +283,7 @@ export async function removeSpaceMember(req: AuthenticatedRequest, res: Response
             return forbidden(res, '只有空间管理员可以移除成员')
         }
 
-        await spaceService.removeSpaceMember(spaceId, memberUsername)
+        await spaceService.removeSpaceMember({ spaceId, username: memberUsername })
 
         logger.info(`[Space] Removed member ${memberUsername} from space ${spaceId} by ${username}`)
         return successResponse(res, null)

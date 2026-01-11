@@ -11,17 +11,16 @@ export const useSpaceStore = defineStore('space', () => {
   const joinedSpacesTotal = ref(0);
   const currentSpace = ref<Space | null>(null);
   const currentSpaceMembers = ref<UserSpaceAuth[]>([]);
-  const currentUserAuth = ref<UserSpaceAuth | null>(null);
   const personalSpace = ref<Space | null>(null);
   const folders = ref<Folder[]>([]);
   const loading = ref(false);
 
   // Computed
-  const isSuperAdmin = computed(() => currentUserAuth.value?.superAdmin || false);
-  const canCreateFolder = computed(() => currentUserAuth.value?.canCreateFolder || false);
-  const canCreateDoc = computed(() => currentUserAuth.value?.canCreateDoc || false);
   const publicSpaces = computed(() => spaces.value.filter(s => s.spaceType === 1));
-
+  const spaceAccess = computed(() => currentSpace.value?.permission);
+  const isSuperAdmin = computed(() => {
+    return currentSpace.value?.permission?.isSuperAdmin ?? false
+  });
   // Actions
   async function fetchSpaces(params: { page: number; pageSize: number; type?: number }) {
     loading.value = true;
@@ -78,18 +77,6 @@ export const useSpaceStore = defineStore('space', () => {
     }
   }
 
-  async function checkAccessStatus(spaceId: string) {
-    try {
-      const data = await spaceApi.checkAccessStatus(spaceId);
-      if (data.auth) {
-        currentUserAuth.value = data.auth;
-      }
-      return data;
-    } catch (error) {
-      console.error('Failed to check access status:', error);
-      throw error;
-    }
-  }
 
   async function createSpace(data: Partial<Space> & { deptId: number }) {
     try {
@@ -179,9 +166,24 @@ export const useSpaceStore = defineStore('space', () => {
     }
   }
 
+  // 将 boolean 权限转换为 0/1 格式
+  function convertPermToNumber(perm: Record<string, boolean | undefined>): Record<string, number | undefined> {
+    const result: Record<string, number | undefined> = {};
+    if (perm.canRead !== undefined) result.canRead = perm.canRead ? 1 : 0;
+    if (perm.canCreateFolder !== undefined) result.canCreateFolder = perm.canCreateFolder ? 1 : 0;
+    if (perm.canCreateDoc !== undefined) result.canCreateDoc = perm.canCreateDoc ? 1 : 0;
+    if (perm.superAdmin !== undefined) result.superAdmin = perm.superAdmin ? 1 : 0;
+    return result;
+  }
+
   async function addMembers(spaceId: string, members: any[]) {
     try {
-      await spaceApi.addSpaceMembers(spaceId, members);
+      // 转换权限格式
+      const convertedMembers = members.map(m => ({
+        username: m.username,
+        ...convertPermToNumber(m),
+      }));
+      await spaceApi.addSpaceMembers(spaceId, convertedMembers);
       await fetchSpaceMembers(spaceId);
     } catch (error) {
       console.error('Failed to add members:', error);
@@ -191,7 +193,9 @@ export const useSpaceStore = defineStore('space', () => {
 
   async function updateMember(spaceId: string, username: string, data: any) {
     try {
-      await spaceApi.updateSpaceMember(spaceId, username, data);
+      // 转换权限格式
+      const convertedData = convertPermToNumber(data);
+      await spaceApi.updateSpaceMember(spaceId, username, convertedData);
       await fetchSpaceMembers(spaceId);
     } catch (error) {
       console.error('Failed to update member:', error);
@@ -209,14 +213,10 @@ export const useSpaceStore = defineStore('space', () => {
     }
   }
 
-  function setCurrentUserAuth(auth: UserSpaceAuth | null) {
-    currentUserAuth.value = auth;
-  }
 
   function resetCurrentSpace() {
     currentSpace.value = null;
     currentSpaceMembers.value = [];
-    currentUserAuth.value = null;
     folders.value = [];
   }
 
@@ -228,21 +228,18 @@ export const useSpaceStore = defineStore('space', () => {
     joinedSpacesTotal,
     currentSpace,
     currentSpaceMembers,
-    currentUserAuth,
     personalSpace,
     folders,
     loading,
     // Computed
-    isSuperAdmin,
-    canCreateFolder,
-    canCreateDoc,
+    spaceAccess,
     publicSpaces,
+    isSuperAdmin,
     // Actions
     fetchSpaces,
     fetchJoinedSpaces,
     fetchPersonalSpace,
     fetchSpaceById,
-    checkAccessStatus,
     createSpace,
     updateSpace,
     deleteSpace,
@@ -253,7 +250,6 @@ export const useSpaceStore = defineStore('space', () => {
     addMembers,
     updateMember,
     removeMember,
-    setCurrentUserAuth,
     resetCurrentSpace,
   };
 });

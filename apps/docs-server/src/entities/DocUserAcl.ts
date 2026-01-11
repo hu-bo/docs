@@ -26,10 +26,11 @@ export class DocUserAcl {
     })
     mtime: Date
 
-    @Column({ name: 'document_id', type: 'varchar', length: 128, comment: 'strapi 生成' })
+    @Index('IDX_space_id')
+@Column({ name: 'document_id', type: 'varchar', length: 128, comment: 'strapi 生成' })
     documentId: string
 
-    @Column({ name: 'doc_id', type: 'bigint', default: '0' })
+    @Column({ name: 'doc_id', type: 'bigint', default: '' })
     docId: string
 
     @Column({ type: 'varchar', length: 128 })

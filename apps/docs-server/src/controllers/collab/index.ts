@@ -27,7 +27,7 @@ export async function getCollabToken(req: AuthenticatedRequest, res: Response) {
         }
 
         // 检查用户权限
-        const perm = await permissionService.getDocPermission(username, docId)
+        const perm = await permissionService.getDocPermission({ username, doc })
 
         if (!perm.canRead) {
             return forbidden(res, '无权访问此文档')

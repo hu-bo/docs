@@ -10,10 +10,35 @@ export interface ApplyAccessInput {
     targetId: string
     requestedPerm?: string
     reason?: string
+    username: string
 }
 
 export interface AccessRequestWithDoc extends AccessRequest {
     doc?: { id: string; title: string; owner: string } | null
+}
+
+export interface HasPendingRequestInput {
+    type: AccessRequestType
+    targetId: string
+    username: string
+}
+
+export interface HasDocAclInput {
+    docId: string
+    username: string
+}
+
+export interface GetPendingRequestsInput {
+    docIds: string[]
+    page: number
+    pageSize: number
+}
+
+export interface ApproveRequestInput {
+    request: AccessRequest
+    approved: boolean
+    perm: string | undefined
+    reviewedBy: string
 }
 
 class AccessRequestService {
@@ -30,7 +55,8 @@ class AccessRequestService {
     /**
      * 检查是否有待审批的申请
      */
-    async hasPendingRequest(type: AccessRequestType, targetId: string, username: string): Promise<boolean> {
+    async hasPendingRequest(input: HasPendingRequestInput): Promise<boolean> {
+        const { type, targetId, username } = input
         const ds = getDataSource()
         const existing = await ds.getRepository(AccessRequest).findOne({
             where: {
@@ -46,7 +72,8 @@ class AccessRequestService {
     /**
      * 检查用户是否已有文档权限
      */
-    async hasDocAcl(docId: string, username: string): Promise<boolean> {
+    async hasDocAcl(input: HasDocAclInput): Promise<boolean> {
+        const { docId, username } = input
         const ds = getDataSource()
         const existing = await ds.getRepository(DocUserAcl).findOne({
             where: { docId, username }
@@ -57,13 +84,14 @@ class AccessRequestService {
     /**
      * 创建权限申请
      */
-    async createAccessRequest(input: ApplyAccessInput, username: string): Promise<AccessRequest> {
+    async createAccessRequest(input: ApplyAccessInput): Promise<AccessRequest> {
+        const { username } = input
         const ds = getDataSource()
 
         // 通过 Strapi 创建权限申请
         const result = await strapiClient.create<AccessRequest>('access-requests', {
             type: AccessRequestType.DOC,
-            targetId: Number(input.targetId),
+            targetId: input.targetId,
             username,
             requestedPerm: input.requestedPerm || 'READ',
             reason: input.reason || null,
@@ -93,7 +121,8 @@ class AccessRequestService {
     /**
      * 获取待审批申请列表
      */
-    async getPendingRequests(docIds: string[], page: number, pageSize: number): Promise<{ requests: AccessRequestWithDoc[]; total: number }> {
+    async getPendingRequests(input: GetPendingRequestsInput): Promise<{ requests: AccessRequestWithDoc[]; total: number }> {
+        const { docIds, page, pageSize } = input
         const ds = getDataSource()
 
         const qb = ds.getRepository(AccessRequest).createQueryBuilder('ar')
@@ -135,14 +164,15 @@ class AccessRequestService {
     /**
      * 审批权限申请
      */
-    async approveRequest(request: AccessRequest, approved: boolean, perm: string | undefined, reviewedBy: string): Promise<AccessRequest> {
+    async approveRequest(input: ApproveRequestInput): Promise<AccessRequest> {
+        const { request, approved, perm, reviewedBy } = input
         const ds = getDataSource()
 
         if (approved && request.type === AccessRequestType.DOC) {
             const finalPerm = (perm || request.requestedPerm || 'READ') as DocPerm
             // 通过 Strapi 创建文档用户ACL
             await strapiClient.create<DocUserAcl>('doc-user-acls', {
-                docId: Number(request.targetId),
+                docId: request.targetId,
                 username: request.username,
                 perm: finalPerm
             })

@@ -1,8 +1,6 @@
 <script setup lang="ts">
 import { ref, onMounted, computed, type Component } from 'vue';
 import dayjs from 'dayjs';
-import relativeTime from 'dayjs/plugin/relativeTime';
-import 'dayjs/locale/zh-cn';
 
 import {
   FolderKanban,
@@ -28,15 +26,16 @@ import CommunityCard, { type CommunityItem } from '@/components/CommunityCard.vu
 import CreateSpaceModal from '@/components/CreateSpaceModal.vue';
 import { useSpaceStore } from '@/stores/space';
 import { useDocumentStore } from '@/stores/document';
-
-dayjs.extend(relativeTime);
-dayjs.locale('zh-cn');
+import * as documentApi from '@/api/document';
+import type { RecentDoc } from '@/types';
 
 const spaceStore = useSpaceStore();
 const documentStore = useDocumentStore();
 
-const activeTab = ref<'created' | 'shared'>('created');
+const activeTab = ref<'recent' | 'participated'>('recent');
 const showCreateModal = ref(false);
+const participatedDocuments = ref<RecentDoc[]>([]);
+const loadingParticipated = ref(false);
 
 onMounted(async () => {
   await Promise.all([
@@ -45,6 +44,20 @@ onMounted(async () => {
     documentStore.fetchRecentDocuments({ limit: 12 }),
   ]);
 });
+
+async function handleTabChange(tab: 'recent' | 'participated') {
+  activeTab.value = tab;
+  if (tab === 'participated' && participatedDocuments.value.length === 0) {
+    loadingParticipated.value = true;
+    try {
+      participatedDocuments.value = await documentApi.getMyParticipatedDocuments({ limit: 12 });
+    } catch (error) {
+      console.error('Failed to fetch participated documents:', error);
+    } finally {
+      loadingParticipated.value = false;
+    }
+  }
+}
 
 const ICONS: Component[] = [Laptop, Video, Users, Ship, Cpu, PlayCircle, Radio, Target, TrendingUp, Zap, ShieldCheck, Globe, Briefcase];
 const COLORS = [
@@ -72,17 +85,17 @@ const mySpaces = computed<SpaceItem[]>(() => {
     return {
       id: space.documentId,
       title: space.name,
-      folderCount: 0,
-      fileCount: 0,
-      time: dayjs(space.mtime).fromNow(),
+      folderCount: space.folderCount,
+      docCount: space.docCount,
       icon: visuals.icon,
       bgColor: visuals.color.bg,
       iconColor: visuals.color.icon,
+      // time: dayjs(space.mtime).fromNow(),
     };
   });
 });
 
-const myDocuments = computed<DocumentItem[]>(() => {
+const recentDocItems = computed<DocumentItem[]>(() => {
   return documentStore.recentDocuments.map(doc => ({
     id: doc.documentId,
     title: doc.title,
@@ -92,19 +105,46 @@ const myDocuments = computed<DocumentItem[]>(() => {
   }));
 });
 
-const communityItems = computed<CommunityItem[]>(() => {
+const participatedDocItems = computed<DocumentItem[]>(() => {
+  return participatedDocuments.value.map(doc => ({
+    id: doc.documentId,
+    title: doc.title,
+    path: doc.spaceName || '个人空间',
+    tags: [],
+    time: dayjs(doc.mtime).fromNow(),
+  }));
+});
+
+const currentDocuments = computed(() => {
+  return activeTab.value === 'recent' ? recentDocItems.value : participatedDocItems.value;
+});
+
+const currentDocSource = computed(() => {
+  return activeTab.value === 'recent' ? documentStore.recentDocuments : participatedDocuments.value;
+});
+
+const isDocumentsLoading = computed(() => {
+  return activeTab.value === 'recent' ? documentStore.loading : loadingParticipated.value;
+});
+
+const publicSpaceItems = computed<SpaceItem[]>(() => {
   return spaceStore.publicSpaces.slice(0, 8).map(space => {
     const visuals = getVisuals(space.id);
     return {
       id: space.documentId,
       title: space.name,
-      count: 0,
+      folderCount: space.folderCount,
+      docCount: space.docCount,
       icon: visuals.icon,
       themeColor: visuals.color.theme,
+      bgColor: visuals.color.bg,
+      iconColor: visuals.color.icon,
     };
   });
 });
-
+const communityItems = computed<CommunityItem[]>(() => {
+  return []
+});
 async function handleCreateSuccess() {
   showCreateModal.value = false;
   await Promise.all([
@@ -157,63 +197,63 @@ async function handleCreateSuccess() {
             <a
               role="tab"
               class="tab"
-              :class="{ 'tab-active': activeTab === 'created' }"
-              @click="activeTab = 'created'"
+              :class="{ 'tab-active': activeTab === 'recent' }"
+              @click="handleTabChange('recent')"
             >
               最近访问
             </a>
             <a
               role="tab"
               class="tab"
-              :class="{ 'tab-active': activeTab === 'shared' }"
-              @click="activeTab = 'shared'"
+              :class="{ 'tab-active': activeTab === 'participated' }"
+              @click="handleTabChange('participated')"
             >
               我参与的
             </a>
           </div>
 
-          <span class="badge badge-neutral">{{ myDocuments.length }} 篇</span>
+          <span class="badge badge-neutral">{{ currentDocuments.length }} 篇</span>
         </div>
       </div>
 
-      <div v-if="documentStore.loading && myDocuments.length === 0" class="flex justify-center py-10">
+      <div v-if="isDocumentsLoading && currentDocuments.length === 0" class="flex justify-center py-10">
         <span class="loading loading-spinner loading-lg text-primary"></span>
       </div>
-      <div v-else-if="myDocuments.length === 0" class="text-center py-10 opacity-50">
-        暂无最近文档
+      <div v-else-if="currentDocuments.length === 0" class="text-center py-10 opacity-50">
+        {{ activeTab === 'recent' ? '暂无最近文档' : '暂无参与的文档' }}
       </div>
       <div v-else class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
         <router-link
-          v-for="(doc, idx) in myDocuments"
+          v-for="(doc, idx) in currentDocuments"
           :key="doc.id"
-          :to="`/space/${documentStore.recentDocuments[idx]?.spaceId}/doc/${doc.id}`"
+          :to="`/space/${currentDocSource[idx]?.spaceId}/doc/${doc.id}`"
           class="block h-full"
         >
           <DocumentCard :item="doc" />
         </router-link>
       </div>
     </section>
-       <!-- Community Section -->
+       <!-- publicSpace Section -->
     <section class="pb-10">
       <div class="flex items-center gap-2 mb-6">
         <Hash class="w-5 h-5 text-secondary" />
         <h2 class="text-xl font-bold">全部空间</h2>
       </div>
 
-      <div v-if="spaceStore.loading && communityItems.length === 0" class="flex justify-center py-10">
+      <div v-if="spaceStore.loading && publicSpaceItems.length === 0" class="flex justify-center py-10">
         <span class="loading loading-spinner loading-lg text-primary"></span>
       </div>
-      <div v-else-if="communityItems.length === 0" class="text-center py-10 opacity-50">
+      <div v-else-if="publicSpaceItems.length === 0" class="text-center py-10 opacity-50">
         暂无社区内容
       </div>
-      <div v-else class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+      <div v-else class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         <router-link
-          v-for="item in communityItems"
-          :key="item.id"
-          :to="`/space/${item.id}`"
+          v-for="space in publicSpaceItems"
+          :key="space.id"
+          :to="`/space/${space.id}`"
           class="block"
         >
-          <CommunityCard :item="item" />
+          <SpaceCard :item="space" />
         </router-link>
       </div>
     </section>

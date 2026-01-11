@@ -19,12 +19,13 @@ export class SpaceDept {
     })
     mtime: Date
 
-    @Column({ name: 'document_id', type: 'varchar', length: 128, comment: 'strapi 生成' })
+    @Index('IDX_space_id')
+@Column({ name: 'document_id', type: 'varchar', length: 128, comment: 'strapi 生成' })
     documentId: string
 
-    @Column({ name: 'space_id', type: 'varchar', length: 128, default: '0' })
+    @Column({ name: 'space_id', type: 'varchar', length: 128, default: '' })
     spaceId: string
 
-    @Column({ name: 'dept_id', type: 'varchar', length: 32, default: '0' })
+    @Column({ name: 'dept_id', type: 'varchar', length: 32, default: '' })
     deptId: string
 }

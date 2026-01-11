@@ -43,7 +43,7 @@ export function useCreateDocument(spaceId: string, folderId?: string) {
         title: form.title.trim(),
         accessMode: form.accessMode,
         spaceId,
-        folderId,
+        folderId: folderId || '',
         content: '',
       });
 

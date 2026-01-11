@@ -432,7 +432,7 @@ export interface AdminUser extends Struct.CollectionTypeSchema {
 
 export interface ApiAccessRequestAccessRequest
   extends Struct.CollectionTypeSchema {
-  collectionName: 'access_requests';
+  collectionName: 'access_request';
   info: {
     displayName: 'AccessRequest';
     pluralName: 'access-requests';
@@ -526,15 +526,15 @@ export interface ApiDocFolderDocFolder extends Struct.CollectionTypeSchema {
     singularName: 'doc-folder';
   };
   options: {
-    draftAndPublish: true;
+    draftAndPublish: false;
   };
   attributes: {
     createdAt: Schema.Attribute.DateTime;
     createdBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
       Schema.Attribute.Private;
     ctime: Schema.Attribute.DateTime;
-    doc_id: Schema.Attribute.String;
-    folder_id: Schema.Attribute.String;
+    docId: Schema.Attribute.String;
+    folderId: Schema.Attribute.String;
     locale: Schema.Attribute.String & Schema.Attribute.Private;
     localizations: Schema.Attribute.Relation<
       'oneToMany',
@@ -711,14 +711,14 @@ export interface ApiSpaceDeptSpaceDept extends Struct.CollectionTypeSchema {
     singularName: 'space-dept';
   };
   options: {
-    draftAndPublish: true;
+    draftAndPublish: false;
   };
   attributes: {
     createdAt: Schema.Attribute.DateTime;
     createdBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
       Schema.Attribute.Private;
     ctime: Schema.Attribute.DateTime;
-    dept_id: Schema.Attribute.String;
+    deptId: Schema.Attribute.String;
     locale: Schema.Attribute.String & Schema.Attribute.Private;
     localizations: Schema.Attribute.Relation<
       'oneToMany',
@@ -727,7 +727,7 @@ export interface ApiSpaceDeptSpaceDept extends Struct.CollectionTypeSchema {
       Schema.Attribute.Private;
     mtime: Schema.Attribute.DateTime;
     publishedAt: Schema.Attribute.DateTime;
-    space_id: Schema.Attribute.String;
+    spaceId: Schema.Attribute.String;
     updatedAt: Schema.Attribute.DateTime;
     updatedBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
       Schema.Attribute.Private;
@@ -745,10 +745,6 @@ export interface ApiSpaceFolderSpaceFolder extends Struct.CollectionTypeSchema {
     draftAndPublish: false;
   };
   attributes: {
-    children: Schema.Attribute.Relation<
-      'oneToMany',
-      'api::space-folder.space-folder'
-    >;
     createdAt: Schema.Attribute.DateTime;
     createdBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
       Schema.Attribute.Private;
@@ -767,10 +763,6 @@ export interface ApiSpaceFolderSpaceFolder extends Struct.CollectionTypeSchema {
         maxLength: 128;
       }>;
     order: Schema.Attribute.Integer & Schema.Attribute.DefaultTo<0>;
-    parent: Schema.Attribute.Relation<
-      'manyToOne',
-      'api::space-folder.space-folder'
-    >;
     parentId: Schema.Attribute.String & Schema.Attribute.DefaultTo<'0'>;
     publishedAt: Schema.Attribute.DateTime;
     spaceId: Schema.Attribute.String;

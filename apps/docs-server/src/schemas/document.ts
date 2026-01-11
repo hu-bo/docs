@@ -16,9 +16,9 @@ export const createDocumentSchema = z.object({
     title: z.string().min(1).max(128),
     content: z.string().default(''),
     accessMode: z.enum(['OPEN_EDIT', 'OPEN_READONLY', 'WHITELIST_ONLY']).default('OPEN_READONLY'),
-    tags: z.string().max(512).optional(),
+    tags: z.array(z.string()).optional(),
     spaceId: z.string(),
-    folderId: z.string().default('0')
+    folderId: z.string().default('')
 })
 
 // Update document
@@ -57,11 +57,12 @@ export const updateDocMemberSchema = z.object({
 // Bind document to space
 export const bindDocSpaceSchema = z.object({
     spaceId: z.string(),
-    folderId: z.string().default('0'),
+    folderId: z.string().default(''),
     perm: z.enum(['READ', 'EDIT'])
 })
 export const docRecentSchema = z.object({
-    limit: z.string()
+    limit: z.string(),
+    // spaceId: z.string().optional()
 })
 export type CreateDocumentInput = z.infer<typeof createDocumentSchema>
 export type UpdateDocumentInput = z.infer<typeof updateDocumentSchema>

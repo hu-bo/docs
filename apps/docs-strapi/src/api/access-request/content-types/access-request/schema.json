@@ -1,6 +1,6 @@
 {
   "kind": "collectionType",
-  "collectionName": "access_requests",
+  "collectionName": "access_request",
   "info": {
     "singularName": "access-request",
     "pluralName": "access-requests",

@@ -50,6 +50,11 @@ const routes: RouteRecordRaw[] = [
             component: () => import('@/views/document/DocumentView.vue'),
           },
           {
+            path: 'doc/new',
+            name: 'DocumentNew',
+            component: () => import('@/views/document/DocumentEdit.vue'),
+          },
+          {
             path: 'doc/:documentId/edit',
             name: 'DocumentEdit',
             component: () => import('@/views/document/DocumentEdit.vue'),
@@ -63,6 +68,11 @@ const routes: RouteRecordRaw[] = [
             path: 'doc/:documentId/spaces',
             name: 'DocumentSpaces',
             component: () => import('@/views/document/DocumentSpaces.vue'),
+          },
+          {
+            path: 'folder/:folderPath+/doc/new',
+            name: 'FolderDocumentNew',
+            component: () => import('@/views/document/DocumentEdit.vue'),
           },
           {
             path: 'folder/:folderPath+/doc/:documentId',
@@ -122,24 +132,24 @@ router.beforeEach(async (to, _from, next) => {
       }
     } else {
       // Fetch access status
-      try {
-        const status = await spaceStore.checkAccessStatus(spaceId);
+      // try {
+      //   const status = await spaceStore.checkAccessStatus(spaceId);
 
-        // Update cache
-        accessStatusCache.set(spaceId, {
-          hasAccess: status.hasAccess,
-          expiresAt: Date.now() + CACHE_TTL,
-        });
+      //   // Update cache
+      //   accessStatusCache.set(spaceId, {
+      //     hasAccess: status.hasAccess,
+      //     expiresAt: Date.now() + CACHE_TTL,
+      //   });
 
-        if (!status.hasAccess) {
-          next({ name: 'SpaceAccessDenied', params: { spaceId } });
-          return;
-        }
-      } catch (error) {
-        console.error('Failed to check access status:', error);
-        next({ name: 'SpaceAccessDenied', params: { spaceId } });
-        return;
-      }
+      //   if (!status.hasAccess) {
+      //     next({ name: 'SpaceAccessDenied', params: { spaceId } });
+      //     return;
+      //   }
+      // } catch (error) {
+      //   console.error('Failed to check access status:', error);
+      //   next({ name: 'SpaceAccessDenied', params: { spaceId } });
+      //   return;
+      // }
     }
   }
 

@@ -1,62 +1,70 @@
 import request from './request';
-import type { Doc, RecentDoc, TreeNode, PageResult, DocUserAcl, DocSpaceBinding } from '@/types';
+import type { Doc, RecentDoc, TreeNode, PageResult, DocUserAcl, DocSpaceBinding, FolderContentItem } from '@/types';
 
 export function getRecentDocuments(params?: { limit?: number }) {
-  return request.get<any, RecentDoc[]>('/documents/recent', { params });
+  return request<RecentDoc[]>({ method: 'GET', url: '/documents/recent', params });
+}
+
+export function getMyParticipatedDocuments(params?: { limit?: number }) {
+  return request<RecentDoc[]>({ method: 'GET', url: '/documents/participated', params });
 }
 
 export function getDocuments(params: { spaceId: string; folderId?: string; page?: number; pageSize?: number }) {
-  return request.get<any, PageResult<Doc>>('/documents', { params });
+  return request<PageResult<Doc>>({ method: 'GET', url: '/documents', params });
 }
 
 export function getDocumentTree(params: { spaceId: string; folderId?: string }) {
-  return request.get<any, TreeNode[]>('/space-folder/tree', { params });
+  return request<TreeNode[]>({ method: 'GET', url: '/space-folder/tree', params });
+}
+
+export function getFolderContents(params: { spaceId: string; folderId?: string }) {
+  return request<FolderContentItem[]>({ method: 'GET', url: '/space-folder/contents', params });
 }
 
 export function getDocumentById(documentId: string) {
-  return request.get<any, Doc>(`/documents/${documentId}`);
+  return request<Doc>({ method: 'GET', url: `/documents/${documentId}` });
 }
 
 export function createDocument(data: Partial<Doc>) {
-  return request.post<any, Doc>('/documents', data);
+  return request<Doc>({ method: 'POST', url: '/documents', data });
 }
 
 export function updateDocument(documentId: string, data: Partial<Doc>) {
-  return request.put<any, Doc>(`/documents/${documentId}`, data);
+  return request<Doc>({ method: 'PUT', url: `/documents/${documentId}`, data });
 }
 
 export function moveDocument(documentId: string, folderId: string) {
-  return request.put(`/documents/move/${documentId}`, { folderId });
+  return request<void>({ method: 'PUT', url: `/documents/move/${documentId}`, data: { folderId } });
 }
 
 export function deleteDocument(documentId: string) {
-  return request.delete(`/documents/${documentId}`);
+  return request<void>({ method: 'DELETE', url: `/documents/${documentId}` });
 }
 
 export function getDocMembers(documentId: string) {
-  return request.get<any, DocUserAcl[]>(`/documents/${documentId}/members`);
+  return request<DocUserAcl[]>({ method: 'GET', url: `/documents/${documentId}/members` });
 }
 
-export function addDocMembers(documentId: string, members: any[]) {
-  return request.post(`/documents/${documentId}/members`, members);
+export function addDocMembers(documentId: string, data: { members: any[] }) {
+  return request<void>({ method: 'POST', url: `/documents/${documentId}/members`, data });
 }
 
 export function updateDocMember(documentId: string, username: string, data: any) {
-  return request.put(`/documents/${documentId}/members/${username}`, data);
+  return request<void>({ method: 'PUT', url: `/documents/${documentId}/members/${username}`, data });
 }
 
 export function removeDocMembers(documentId: string, username: string) {
-  return request.delete(`/documents/${documentId}/members/${username}`);
+  return request<void>({ method: 'DELETE', url: `/documents/${documentId}/members/${username}` });
 }
 
 export function getDocSpaces(documentId: string) {
-  return request.get<any, DocSpaceBinding[]>(`/documents/${documentId}/spaces`);
+  return request<DocSpaceBinding[]>({ method: 'GET', url: `/documents/${documentId}/spaces` });
 }
 
 export function bindDocToSpace(documentId: string, data: any) {
-  return request.post(`/documents/${documentId}/spaces`, data);
+  return request<void>({ method: 'POST', url: `/documents/${documentId}/spaces`, data });
 }
 
 export function unbindDocFromSpace(documentId: string, spaceId: string) {
-  return request.delete(`/documents/${documentId}/spaces/${spaceId}`);
+  return request<void>({ method: 'DELETE', url: `/documents/${documentId}/spaces/${spaceId}` });
 }

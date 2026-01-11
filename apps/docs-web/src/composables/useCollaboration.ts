@@ -1,4 +1,4 @@
-import { ref, computed, onBeforeUnmount, watch, type Ref } from 'vue';
+import { ref, shallowRef, computed, onBeforeUnmount, watch, type Ref } from 'vue';
 import { HocuspocusProvider, WebSocketStatus } from '@hocuspocus/provider';
 import * as Y from 'yjs';
 import { IndexeddbPersistence } from 'y-indexeddb';
@@ -19,8 +19,8 @@ export interface UseCollaborationOptions {
 export function useCollaboration(options: Ref<UseCollaborationOptions>) {
   const collaborationStore = useCollaborationStore();
 
-  // Yjs document instance
-  const ydoc = new Y.Doc();
+  // Yjs document instance - created per connection (use shallowRef for reactivity)
+  const ydoc = shallowRef<Y.Doc | null>(null);
 
   // Local offline cache (optional)
   let idbPersistence: IndexeddbPersistence | null = null;
@@ -66,18 +66,21 @@ export function useCollaboration(options: Ref<UseCollaborationOptions>) {
     try {
       error.value = null;
 
+      // Create new Yjs document for this connection
+      ydoc.value = new Y.Doc();
+
       // Get collaboration token
-      const token = await collaborationStore.fetchWsToken();
+      const token = await collaborationStore.fetchWsToken(options.value.documentId);
       const wsUrl = collaborationStore.getWebSocketUrl(options.value.documentId, token);
 
       // Setup local offline cache
-      idbPersistence = new IndexeddbPersistence(`doc.${options.value.documentId}`, ydoc);
+      idbPersistence = new IndexeddbPersistence(`doc.${options.value.documentId}`, ydoc.value);
 
       // Create HocuspocusProvider
       const p = new HocuspocusProvider({
         url: wsUrl,
         name: options.value.documentId,
-        document: ydoc,
+        document: ydoc.value,
         token,
         connect: true,
         onStatus: (event) => {
@@ -87,7 +90,7 @@ export function useCollaboration(options: Ref<UseCollaborationOptions>) {
         onAuthenticationFailed: async () => {
           // Re-fetch token and reconnect
           try {
-            const newToken = await collaborationStore.fetchWsToken(true);
+            const newToken = await collaborationStore.fetchWsToken(options.value.documentId, true);
             p.disconnect();
             // @ts-expect-error - hocuspocus provider token is configurable
             p.configuration.token = newToken;
@@ -146,6 +149,10 @@ export function useCollaboration(options: Ref<UseCollaborationOptions>) {
       idbPersistence.destroy();
       idbPersistence = null;
     }
+    if (ydoc.value) {
+      ydoc.value.destroy();
+      ydoc.value = null;
+    }
     wsStatus.value = WebSocketStatus.Disconnected;
     onlineUsers.value = [];
     collaborationStore.reset();
@@ -153,11 +160,11 @@ export function useCollaboration(options: Ref<UseCollaborationOptions>) {
 
   // Get Tiptap collaboration extensions
   const collaborationExtensions = computed(() => {
-    if (!provider.value) return [];
+    if (!provider.value || !ydoc.value) return [];
 
     return [
       Collaboration.configure({
-        document: ydoc,
+        document: ydoc.value,
       }),
       CollaborationCursor.configure({
         provider: provider.value,
@@ -196,7 +203,6 @@ export function useCollaboration(options: Ref<UseCollaborationOptions>) {
   });
 
   return {
-    ydoc,
     provider,
     isConnected,
     connectionStatus,

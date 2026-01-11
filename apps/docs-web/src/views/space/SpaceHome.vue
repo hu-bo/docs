@@ -1,15 +1,10 @@
 <script setup lang="ts">
-import { ref, onMounted, computed, watch } from 'vue';
+import { computed, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
-import { FileText, Folder, Plus, Clock } from 'lucide-vue-next';
+import { FileText, Folder, Clock, Edit3, User } from 'lucide-vue-next';
 import { useSpaceStore } from '@/stores/space';
 import { useDocumentStore } from '@/stores/document';
 import dayjs from 'dayjs';
-import relativeTime from 'dayjs/plugin/relativeTime';
-import 'dayjs/locale/zh-cn';
-
-dayjs.extend(relativeTime);
-dayjs.locale('zh-cn');
 
 const route = useRoute();
 const router = useRouter();
@@ -26,28 +21,23 @@ const currentFolderId = computed(() => {
   return undefined;
 });
 
-const showCreateDocModal = ref(false);
-const newDocTitle = ref('');
-const creating = ref(false);
-
-onMounted(async () => {
-  await loadData();
-});
+// 分离文件夹和文档（使用 store 中的数据）
+const folders = computed(() => documentStore.folderContents.filter(item => item.type === 'folder'));
+const documents = computed(() => documentStore.folderContents.filter(item => item.type === 'doc'));
 
 watch([spaceId, currentFolderId], async () => {
   await loadData();
-});
+}, { immediate: true });
 
 async function loadData() {
   if (!spaceId.value) return;
 
-  await Promise.all([
-    documentStore.fetchDocuments({
-      spaceId: spaceId.value,
-      folderId: currentFolderId.value,
-    }),
-    spaceStore.fetchFolders(spaceId.value, currentFolderId.value),
-  ]);
+  try {
+    // 使用新的 contents API 获取当前目录下的内容
+    await documentStore.fetchFolderContents(spaceId.value, currentFolderId.value);
+  } catch (error) {
+    console.error('Failed to load folder contents:', error);
+  }
 }
 
 function navigateToFolder(folderId: string) {
@@ -80,30 +70,19 @@ function navigateToDoc(documentId: string) {
     });
   }
 }
-
-async function handleCreateDoc() {
-  if (!newDocTitle.value.trim()) return;
-
-  creating.value = true;
-  try {
-    const newDoc = await documentStore.createDocument({
-      title: newDocTitle.value.trim(),
-      spaceId: spaceId.value,
-      folderId: currentFolderId.value,
-      accessMode: 'OPEN_EDIT',
-      content: '',
+function handleCreateNewDoc() {
+  if (currentFolderId.value) {
+    router.push({
+      name: 'FolderDocumentNew',
+      params: { spaceId: spaceId.value, folderPath: currentFolderId.value },
     });
-
-    showCreateDocModal.value = false;
-    newDocTitle.value = '';
-    navigateToDoc(newDoc.documentId);
-  } catch (error) {
-    console.error('Failed to create document:', error);
-  } finally {
-    creating.value = false;
+  } else {
+    router.push({
+      name: 'DocumentNew',
+      params: { spaceId: spaceId.value },
+    });
   }
 }
-
 function getAccessModeBadge(mode: string) {
   switch (mode) {
     case 'OPEN_EDIT':
@@ -112,6 +91,28 @@ function getAccessModeBadge(mode: string) {
       return { class: 'badge-info', text: '公开只读' };
     default:
       return { class: 'badge-warning', text: '白名单' };
+  }
+}
+
+function handleEditDoc(event: MouseEvent, documentId: string) {
+  event.stopPropagation();
+  if (currentFolderId.value) {
+    router.push({
+      name: 'FolderDocumentEdit',
+      params: {
+        spaceId: spaceId.value,
+        folderPath: currentFolderId.value,
+        documentId,
+      },
+    });
+  } else {
+    router.push({
+      name: 'DocumentEdit',
+      params: {
+        spaceId: spaceId.value,
+        documentId,
+      },
+    });
   }
 }
 </script>
@@ -127,29 +128,29 @@ function getAccessModeBadge(mode: string) {
     </div>
 
     <!-- Quick Actions -->
-    <div class="mb-8" v-if="spaceStore.canCreateDoc">
+    <!-- <div class="mb-8" v-if="spaceStore.currentSpace?.permission?.canCreateDoc">
       <button class="btn btn-primary" @click="showCreateDocModal = true">
         <Plus class="w-4 h-4" />
         新建文档
       </button>
-    </div>
+    </div> -->
 
     <!-- Folders -->
-    <section v-if="spaceStore.folders.length > 0" class="mb-8">
+    <section v-if="folders.length > 0" class="mb-8">
       <h2 class="text-lg font-semibold mb-4">文件夹</h2>
       <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
         <div
-          v-for="folder in spaceStore.folders"
-          :key="folder.id"
+          v-for="folder in folders"
+          :key="folder.key"
           class="card bg-base-100 shadow-sm hover:shadow-md cursor-pointer transition-shadow"
-          @click="navigateToFolder(folder.documentId)"
+          @click="navigateToFolder(folder.key)"
         >
           <div class="card-body p-4 flex-row items-center gap-3">
             <Folder class="w-8 h-8 text-warning shrink-0" />
             <div class="min-w-0">
-              <p class="font-medium truncate">{{ folder.name }}</p>
+              <p class="font-medium truncate">{{ folder.title }}</p>
               <p class="text-xs opacity-50">
-                {{ folder.visibilityScope === 'ALL' ? '所有人可见' : '部门可见' }}
+                {{ folder.visibilityScope === 'DEPT_ONLY' ? '部门可见' : '所有人可见' }}
               </p>
             </div>
           </div>
@@ -157,82 +158,82 @@ function getAccessModeBadge(mode: string) {
       </div>
     </section>
 
-    <!-- Documents -->
+    <!-- Documents Table -->
     <section>
       <h2 class="text-lg font-semibold mb-4">文档</h2>
 
-      <div v-if="documentStore.loading" class="flex justify-center py-10">
+      <div v-if="documentStore.folderContentsLoading" class="flex justify-center py-10">
         <span class="loading loading-spinner loading-lg text-primary"></span>
       </div>
 
-      <div v-else-if="documentStore.documents.length === 0" class="text-center py-10">
+      <div v-else-if="documents.length === 0" class="text-center py-10">
         <FileText class="w-16 h-16 opacity-30 mx-auto mb-4" />
         <p class="opacity-50">暂无文档</p>
         <button
-          v-if="spaceStore.canCreateDoc"
+          v-if="spaceStore.currentSpace?.permission?.canCreateDoc"
           class="link link-primary mt-4"
-          @click="showCreateDocModal = true"
+          @click="handleCreateNewDoc"
         >
           创建第一个文档
         </button>
       </div>
 
-      <div v-else class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-        <div
-          v-for="doc in documentStore.documents"
-          :key="doc.id"
-          class="card bg-base-100 shadow-sm hover:shadow-lg cursor-pointer transition-shadow"
-          @click="navigateToDoc(doc.documentId)"
-        >
-          <div class="card-body p-5">
-            <div class="flex items-start gap-3 mb-3">
-              <div class="p-2 bg-primary/10 rounded-lg">
-                <FileText class="w-5 h-5 text-primary" />
-              </div>
-              <div class="flex-1 min-w-0">
-                <h3 class="font-medium truncate">{{ doc.title }}</h3>
-                <p class="text-xs opacity-50 mt-1">{{ doc.owner }}</p>
-              </div>
-            </div>
-
-            <div class="flex items-center justify-between">
-              <span class="badge badge-sm" :class="getAccessModeBadge(doc.accessMode).class">
-                {{ getAccessModeBadge(doc.accessMode).text }}
-              </span>
-              <div class="flex items-center gap-1 text-xs opacity-50">
-                <Clock class="w-3 h-3" />
-                <span>{{ dayjs(doc.mtime).fromNow() }}</span>
-              </div>
-            </div>
-          </div>
-        </div>
+      <div v-else class="overflow-x-auto bg-base-100 rounded-lg shadow-sm">
+        <table class="table table-hover">
+          <thead>
+            <tr>
+              <th>文档名称</th>
+              <th>作者</th>
+              <th>访问权限</th>
+              <th>更新时间</th>
+              <th v-if="spaceStore.currentSpace?.permission?.canCreateDoc" class="w-20">操作</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr
+              v-for="doc in documents"
+              :key="doc.key"
+              class="cursor-pointer hover:bg-base-200"
+              @click="navigateToDoc(doc.key)"
+            >
+              <td>
+                <div class="flex items-center gap-3">
+                  <FileText class="w-5 h-5 text-info shrink-0" />
+                  <span class="font-medium">{{ doc.title }}</span>
+                </div>
+              </td>
+              <td>
+                <div class="flex items-center gap-1 text-sm opacity-70">
+                  <User class="w-4 h-4" />
+                  <span>{{ doc.owner || '-' }}</span>
+                </div>
+              </td>
+              <td>
+                <span class="badge badge-sm" :class="getAccessModeBadge(doc.accessMode || '').class">
+                  {{ getAccessModeBadge(doc.accessMode || '').text }}
+                </span>
+              </td>
+              <td>
+                <div class="flex items-center gap-1 text-sm opacity-70">
+                  <Clock class="w-4 h-4" />
+                  <span>{{ doc.mtime ? dayjs(doc.mtime).fromNow() : '-' }}</span>
+                </div>
+              </td>
+              <td v-if="spaceStore.currentSpace?.permission?.canCreateDoc">
+                <button
+                  v-if="doc.perm?.canEdit"
+                  class="btn btn-ghost btn-xs btn-square"
+                  title="编辑"
+                  @click="handleEditDoc($event, doc.key)"
+                >
+                  <Edit3 class="w-4 h-4" />
+                </button>
+              </td>
+            </tr>
+          </tbody>
+        </table>
       </div>
     </section>
 
-    <!-- Create Doc Modal -->
-    <dialog class="modal" :class="{ 'modal-open': showCreateDocModal }">
-      <div class="modal-box">
-        <h3 class="font-bold text-lg">新建文档</h3>
-        <div class="py-4">
-          <input
-            v-model="newDocTitle"
-            type="text"
-            placeholder="文档标题"
-            class="input input-bordered w-full"
-            @keydown.enter="handleCreateDoc"
-          />
-        </div>
-        <div class="modal-action">
-          <button class="btn" @click="showCreateDocModal = false">取消</button>
-          <button class="btn btn-primary" :disabled="creating" @click="handleCreateDoc">
-            <span v-if="creating" class="loading loading-spinner loading-sm"></span>
-            创建
-          </button>
-        </div>
-      </div>
-      <form method="dialog" class="modal-backdrop">
-        <button @click="showCreateDocModal = false">close</button>
-      </form>
-    </dialog>
   </div>
 </template>

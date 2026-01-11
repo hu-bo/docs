@@ -27,7 +27,27 @@ export async function getRecentDocuments(req: AuthenticatedRequest, res: Respons
         const username = req.user!.username
         const { limit } = docRecentSchema.parse(req.query)
 
-        const docs = await documentService.getRecentDocuments(username, Number(limit))
+        const docs = await documentService.getRecentDocuments(username, {
+            limit: Number(limit),
+            // spaceId
+        })
+        return successResponse(res, docs)
+    } catch (error) {
+        return errorResponse(res, error)
+    }
+}
+
+/**
+ * 获取用户参与的文档（在文档白名单 DocUserAcl 中的文档）
+ */
+export async function getParticipatedDocuments(req: AuthenticatedRequest, res: Response) {
+    try {
+        const username = req.user!.username
+        const { limit } = docRecentSchema.parse(req.query)
+
+        const docs = await documentService.getParticipatedDocuments(username, {
+            limit: Number(limit),
+        })
         return successResponse(res, docs)
     } catch (error) {
         return errorResponse(res, error)
@@ -54,13 +74,13 @@ export async function getDocument(req: AuthenticatedRequest, res: Response) {
             // 这里只做只读访问，不写入 ACL
         }
 
-        const perm = await permissionService.getDocPermission(username, documentId)
+        const perm = await permissionService.getDocPermission({ username, doc })
         if (!perm.canRead) {
             return forbidden(res, '无权访问此文档')
         }
 
         // 更新访问记录
-        await documentService.updateDocActivity(documentId, username, 'view')
+        await documentService.updateDocActivity({ docId: documentId, username, action: 'view' })
 
         return successResponse(res, {
             ...doc,
@@ -85,20 +105,20 @@ export async function createDocument(req: AuthenticatedRequest, res: Response) {
         const username = req.user!.username
 
         // 检查空间创建文档权限
-        const spacePerm = await permissionService.getSpacePermission(username, input.spaceId)
+        const spacePerm = await permissionService.getSpacePermission({username, spaceId: input.spaceId})
         if (!spacePerm.canCreateDoc && !spacePerm.isSuperAdmin) {
             return forbidden(res, '无权在此空间创建文档')
         }
 
         // 检查目录可见性
-        if (input.folderId !== '0') {
+        if (input.folderId) {
             const canView = await permissionService.canViewFolder(username, input.folderId)
             if (!canView) {
                 return forbidden(res, '无权访问此目录')
             }
         }
 
-        const doc = await documentService.createDocument(input, username)
+        const doc = await documentService.createDocument({ ...input, username })
 
         logger.info(`[Document] Created document ${doc.id} in space ${input.spaceId} by ${username}`)
         return successResponse(res, doc)
@@ -121,7 +141,7 @@ export async function updateDocument(req: AuthenticatedRequest, res: Response) {
             return notFound(res, '文档不存在')
         }
 
-        const perm = await permissionService.getDocPermission(username, documentId)
+        const perm = await permissionService.getDocPermission({username, docId: documentId})
         if (!perm.canEdit) {
             return forbidden(res, '无权编辑此文档')
         }
@@ -129,7 +149,7 @@ export async function updateDocument(req: AuthenticatedRequest, res: Response) {
         const updated = await documentService.updateDocument(documentId, input)
 
         // 更新编辑记录
-        await documentService.updateDocActivity(documentId, username, 'edit')
+        await documentService.updateDocActivity({ docId: documentId, username, action: 'edit' })
 
         logger.info(`[Document] Updated document ${documentId} by ${username}`)
         return successResponse(res, updated)
@@ -146,7 +166,7 @@ export async function deleteDocument(req: AuthenticatedRequest, res: Response) {
         const { documentId } = documentIdParamSchema.parse(req.params)
         const username = req.user!.username
 
-        const perm = await permissionService.getDocPermission(username, documentId)
+        const perm = await permissionService.getDocPermission({username, docId: documentId})
         if (!perm.canEdit) {
             return forbidden(res, '无权删除此文档')
         }
@@ -169,7 +189,7 @@ export async function moveDocument(req: AuthenticatedRequest, res: Response) {
         const { folderId } = moveDocumentSchema.parse(req.body)
         const username = req.user!.username
 
-        const perm = await permissionService.getDocPermission(username, documentId)
+        const perm = await permissionService.getDocPermission({username, docId: documentId})
         if (!perm.canEdit) {
             return forbidden(res, '无权移动此文档')
         }
@@ -180,14 +200,14 @@ export async function moveDocument(req: AuthenticatedRequest, res: Response) {
         }
 
         // 检查目标目录可见性
-        if (folderId !== '0') {
+        if (folderId) {
             const canView = await permissionService.canViewFolder(username, folderId)
             if (!canView) {
                 return forbidden(res, '无权访问目标目录')
             }
         }
 
-        await documentService.moveDocument(documentId, folderId)
+        await documentService.moveDocument({ documentId, folderId })
 
         logger.info(`[Document] Moved document ${documentId} to folder ${folderId} by ${username}`)
         return successResponse(res, null)
@@ -212,12 +232,12 @@ export async function acceptShare(req: AuthenticatedRequest, res: Response) {
         // TODO: 验证分享码，根据分享码类型决定权限
         // 暂时默认给 READ 权限
 
-        const existing = await documentService.getDocUserAcl(documentId, username)
+        const existing = await documentService.getDocUserAcl({ documentId, username })
         if (existing) {
             return successResponse(res, existing)
         }
 
-        const acl = await documentService.createDocUserAcl(documentId, username, DocPerm.READ)
+        const acl = await documentService.createDocUserAcl({ documentId, username, perm: DocPerm.READ })
 
         logger.info(`[Document] User ${username} accepted share for document ${documentId}`)
         return successResponse(res, acl)
@@ -235,15 +255,13 @@ export async function getDocMembers(req: AuthenticatedRequest, res: Response) {
     try {
         const { documentId } = documentIdParamSchema.parse(req.params)
         const username = req.user!.username
-        const { page, pageSize } = paginationSchema.parse(req.query)
-
         const isOwnerOrAdmin = await permissionService.isDocOwnerOrSuperAdmin(username, documentId)
         if (!isOwnerOrAdmin) {
             return forbidden(res, '只有文档所有者或空间管理员可以查看成员列表')
         }
 
-        const { members, total } = await documentService.getDocMembers(documentId, page, pageSize)
-        return paginated(res, members, total, page, pageSize)
+        const members = await documentService.getDocMembers({ documentId })
+        return successResponse(res, members)
     } catch (error) {
 
         return errorResponse(res, error)
@@ -264,7 +282,7 @@ export async function addDocMembers(req: AuthenticatedRequest, res: Response) {
             return forbidden(res, '只有文档所有者或空间管理员可以添加成员')
         }
 
-        const added = await documentService.addDocMembers(documentId, members)
+        const added = await documentService.addDocMembers({ documentId, members })
 
         logger.info(`[Document] Added ${added.length} members to document ${documentId} by ${username}`)
         return successResponse(res, added)
@@ -289,7 +307,7 @@ export async function updateDocMember(req: AuthenticatedRequest, res: Response) 
             return forbidden(res, '只有文档所有者或空间管理员可以修改成员权限')
         }
 
-        const acl = await documentService.updateDocMember(documentId, memberUsername, perm as DocPerm)
+        const acl = await documentService.updateDocMember({ documentId, username: memberUsername, perm: perm as DocPerm })
         if (!acl) {
             return notFound(res, '成员不存在')
         }
@@ -316,7 +334,7 @@ export async function removeDocMember(req: AuthenticatedRequest, res: Response) 
             return forbidden(res, '只有文档所有者或空间管理员可以移除成员')
         }
 
-        await documentService.removeDocMember(documentId, memberUsername)
+        await documentService.removeDocMember({ documentId, username: memberUsername })
 
         logger.info(`[Document] Removed member ${memberUsername} from document ${documentId} by ${username}`)
         return successResponse(res, null)
@@ -354,7 +372,7 @@ export async function getDocSpaces(req: AuthenticatedRequest, res: Response) {
 export async function bindDocToSpace(req: AuthenticatedRequest, res: Response) {
     try {
         const { documentId } = documentIdParamSchema.parse(req.params)
-        const { spaceId, folderId, perm } = bindDocSpaceSchema.parse(req.body)
+        const { spaceId, folderId = '', perm } = bindDocSpaceSchema.parse(req.body)
         const username = req.user!.username
 
         const isOwnerOrAdmin = await permissionService.isDocOwnerOrSuperAdmin(username, documentId)
@@ -362,11 +380,11 @@ export async function bindDocToSpace(req: AuthenticatedRequest, res: Response) {
             return forbidden(res, '只有文档所有者或空间管理员可以绑定空间')
         }
 
-        if (await documentService.isDocBoundToSpace(documentId, spaceId)) {
+        if (await documentService.isDocBoundToSpace({ documentId, spaceId })) {
             return badRequest(res, '文档已绑定到此空间')
         }
 
-        const acl = await documentService.bindDocToSpace(documentId, spaceId, folderId, perm as DocSpacePerm)
+        const acl = await documentService.bindDocToSpace({ documentId, spaceId, folderId, perm: perm as DocSpacePerm })
 
         logger.info(`[Document] Bound document ${documentId} to space ${spaceId} by ${username}`)
         return successResponse(res, acl)
@@ -389,7 +407,7 @@ export async function unbindDocFromSpace(req: AuthenticatedRequest, res: Respons
             return forbidden(res, '只有文档所有者或空间管理员可以解除绑定')
         }
 
-        await documentService.unbindDocFromSpace(documentId, spaceId)
+        await documentService.unbindDocFromSpace({ documentId, spaceId })
 
         logger.info(`[Document] Unbound document ${documentId} from space ${spaceId} by ${username}`)
         return successResponse(res, null)

@@ -23,6 +23,7 @@ export class SpaceFolder {
     })
     mtime: Date
 
+    @Index('IDX_space_id')
     @Column({ name: 'document_id', type: 'varchar', length: 128, comment: 'strapi 生成' })
     documentId: string
 
@@ -31,7 +32,7 @@ export class SpaceFolder {
     spaceId: string
 
     @Index('IDX_parent_id')
-    @Column({ name: 'parent_id', type: 'varchar', default: '0' })
+    @Column({ name: 'parent_id', type: 'varchar', default: '' })
     parentId: string
 
     @Column({ type: 'varchar', length: 128 })
@@ -42,7 +43,4 @@ export class SpaceFolder {
 
     @Column({ type: 'int', default: 0 })
     order: number
-
-    @Column({ name: 'is_deleted', type: 'tinyint', default: 0 })
-    isDeleted: number
 }

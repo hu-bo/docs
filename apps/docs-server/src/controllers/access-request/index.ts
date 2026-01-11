@@ -27,16 +27,16 @@ export async function applyAccess(req: AuthenticatedRequest, res: Response) {
         }
 
         // 检查是否已有待审批的申请
-        if (await accessRequestService.hasPendingRequest('DOC' as any, input.targetId, username)) {
+        if (await accessRequestService.hasPendingRequest({ type: 'DOC' as any, targetId: input.targetId, username })) {
             return badRequest(res, '您已有待审批的权限申请')
         }
 
         // 检查是否已有权限
-        if (await accessRequestService.hasDocAcl(input.targetId, username)) {
+        if (await accessRequestService.hasDocAcl({ docId: input.targetId, username })) {
             return badRequest(res, '您已有此文档的访问权限')
         }
 
-        const request = await accessRequestService.createAccessRequest(input, username)
+        const request = await accessRequestService.createAccessRequest({ ...input, username })
 
         logger.info(`[AccessRequest] User ${username} applied for ${input.type} ${input.targetId}`)
         return successResponse(res, request)
@@ -61,7 +61,7 @@ export async function getPendingRequests(req: AuthenticatedRequest, res: Respons
             return paginated(res, [], 0, page, pageSize)
         }
 
-        const { requests, total } = await accessRequestService.getPendingRequests(myDocIds, page, pageSize)
+        const { requests, total } = await accessRequestService.getPendingRequests({ docIds: myDocIds, page, pageSize })
         return paginated(res, requests, total, page, pageSize)
     } catch (error) {
         logger.error('[AccessRequest] getPendingRequests error:', error)
@@ -96,7 +96,7 @@ export async function approveAccess(req: AuthenticatedRequest, res: Response) {
             return forbidden(res, '只有文档作者可以审批权限申请')
         }
 
-        const updated = await accessRequestService.approveRequest(request, input.approved, input.perm, username)
+        const updated = await accessRequestService.approveRequest({ request, approved: input.approved, perm: input.perm, reviewedBy: username })
 
         logger.info(`[AccessRequest] Request ${input.requestId} ${input.approved ? 'approved' : 'rejected'} by ${username}`)
         return successResponse(res, updated)

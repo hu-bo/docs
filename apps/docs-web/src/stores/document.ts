@@ -1,11 +1,12 @@
 import { defineStore } from 'pinia';
 import { ref } from 'vue';
-import type { Doc, RecentDoc, TreeNode, DocUserAcl, DocSpaceBinding } from '@/types';
+import type { Doc, RecentDoc, TreeNode, DocUserAcl, DocSpaceBinding, FolderContentItem } from '@/types';
 import * as documentApi from '@/api/document';
 
 export const useDocumentStore = defineStore('document', () => {
   // State
   const documentTree = ref<TreeNode[]>([]);
+  const folderContents = ref<FolderContentItem[]>([]);
   const currentDocument = ref<Doc | null>(null);
   const documents = ref<Doc[]>([]);
   const documentsTotal = ref(0);
@@ -13,6 +14,7 @@ export const useDocumentStore = defineStore('document', () => {
   const documentMembers = ref<DocUserAcl[]>([]);
   const documentSpaces = ref<DocSpaceBinding[]>([]);
   const loading = ref(false);
+  const folderContentsLoading = ref(false);
 
   // Actions
   async function fetchDocumentTree(spaceId: string, folderId?: string) {
@@ -33,6 +35,20 @@ export const useDocumentStore = defineStore('document', () => {
     } catch (error) {
       console.error('Failed to load tree node children:', error);
       throw error;
+    }
+  }
+
+  async function fetchFolderContents(spaceId: string, folderId?: string) {
+    folderContentsLoading.value = true;
+    try {
+      const data = await documentApi.getFolderContents({ spaceId, folderId });
+      folderContents.value = data;
+      return data;
+    } catch (error) {
+      console.error('Failed to fetch folder contents:', error);
+      throw error;
+    } finally {
+      folderContentsLoading.value = false;
     }
   }
 
@@ -140,7 +156,7 @@ export const useDocumentStore = defineStore('document', () => {
 
   async function addDocMembers(documentId: string, members: any[]) {
     try {
-      await documentApi.addDocMembers(documentId, members);
+      await documentApi.addDocMembers(documentId, {members});
       await fetchDocMembers(documentId);
     } catch (error) {
       console.error('Failed to add document members:', error);
@@ -209,6 +225,7 @@ export const useDocumentStore = defineStore('document', () => {
   return {
     // State
     documentTree,
+    folderContents,
     currentDocument,
     documents,
     documentsTotal,
@@ -216,9 +233,11 @@ export const useDocumentStore = defineStore('document', () => {
     documentMembers,
     documentSpaces,
     loading,
+    folderContentsLoading,
     // Actions
     fetchDocumentTree,
     loadTreeNodeChildren,
+    fetchFolderContents,
     fetchDocuments,
     fetchDocumentById,
     fetchRecentDocuments,

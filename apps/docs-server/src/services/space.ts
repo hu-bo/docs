@@ -3,7 +3,7 @@ import { strapiClient } from '../tools/strapi/strapiClient'
 import { Space } from '../entities/Space'
 import { SpaceDept } from '../entities/SpaceDept'
 import { UserSpaceAuth, AuthSource } from '../entities/UserSpaceAuth'
-import { SpaceFolder } from '../entities/SpaceFolder'
+import { SpaceFolder, VisibilityScope } from '../entities/SpaceFolder'
 import { Doc } from '../entities/Doc'
 import { DocFolder } from '../entities/DocFolder'
 import { SpaceType } from '../types/index'
@@ -45,6 +45,63 @@ export interface UpdateMemberInput {
     superAdmin?: number
 }
 
+export interface GetCommunitySpacesInput {
+    page: number
+    pageSize: number
+}
+
+export interface GetJoinedSpacesInput {
+    username: string
+    page: number
+    pageSize: number
+}
+
+export interface CreateSpaceInput2 {
+    name: string
+    codeName: string
+    description?: string
+    icon?: string
+    spaceType?: SpaceType
+    username: string
+    deptId: string
+}
+
+export interface GetSpaceFoldersInput {
+    spaceId: string
+    parentFolderId: string
+    visibleIds: string[]
+}
+
+export interface SyncFromSpaceDeptInput {
+    username: string
+    deptId: string
+}
+
+export interface GetSpaceMembersInput {
+    spaceId: string
+}
+
+export interface AddSpaceMembersInput {
+    spaceId: string
+    members: AddMemberInput[]
+}
+
+export interface GetSpaceMemberInput {
+    spaceId: string
+    username: string
+}
+
+export interface UpdateSpaceMemberInput2 {
+    spaceId: string
+    username: string
+    input: UpdateMemberInput
+}
+
+export interface RemoveSpaceMemberInput {
+    spaceId: string
+    username: string
+}
+
 class SpaceService {
     /**
      * 获取空间的文档统计信息
@@ -67,8 +124,8 @@ class SpaceService {
     /**
      * 获取社区空间列表（带分页）
      */
-    async getCommunitySpaces(page: number, pageSize: number): Promise<{ spaces: SpaceWithStats[]; total: number }> {
-
+    async getCommunitySpaces(input: GetCommunitySpacesInput): Promise<{ spaces: SpaceWithStats[]; total: number }> {
+        const { page, pageSize } = input
         const [spaces, total] = await getDataSource()
         .getRepository(Space)
         .findAndCount({
@@ -113,7 +170,7 @@ class SpaceService {
             const spaceId = spaceResult.data.documentId
 
             // 通过 Strapi 创建用户空间权限
-            await strapiClient.create<any>('user-space-auths', {
+            await strapiClient.create<UserSpaceAuth>('user-space-auths', {
                 spaceId: spaceResult.data.documentId,
                 username,
                 canRead: true,
@@ -121,6 +178,16 @@ class SpaceService {
                 canCreateDoc: true,
                 superAdmin: true,
                 source: AuthSource.AUTO_INIT
+            })
+
+            // 创建空间根目录
+            await strapiClient.create<SpaceFolder>('space-folders', {
+                spaceId: spaceId,
+                parentId: '',
+                name: '/',
+                visibilityScope: VisibilityScope.ALL,
+                order: 0,
+                isDeleted: false
             })
 
             // 重新查询获取完整数据
@@ -136,7 +203,8 @@ class SpaceService {
     /**
      * 获取用户参与的空间列表
      */
-    async getJoinedSpaces(username: string, page: number, pageSize: number): Promise<{ spaces: SpaceWithStats[]; total: number }> {
+    async getJoinedSpaces(input: GetJoinedSpacesInput): Promise<{ spaces: SpaceWithStats[]; total: number }> {
+        const { username, page, pageSize } = input
         const ds = getDataSource()
 
         const auths = await ds.getRepository(UserSpaceAuth).find({
@@ -189,7 +257,8 @@ class SpaceService {
     /**
      * 创建空间
      */
-    async createSpace(input: CreateSpaceInput, username: string, deptId: string): Promise<Space> {
+    async createSpace(input: CreateSpaceInput2): Promise<Space> {
+        const { username, deptId } = input
         const ds = getDataSource()
 
         // 通过 Strapi 创建空间
@@ -212,14 +281,24 @@ class SpaceService {
             canCreateFolder: true,
             canCreateDoc: true,
             superAdmin: true,
-            source: AuthSource.MANUAL
+            source: AuthSource.AUTO_INIT
+        })
+
+        // 创建空间根目录
+        await strapiClient.create<SpaceFolder>('space-folders', {
+            spaceId: spaceId,
+            parentId: '',
+            name: '/',
+            visibilityScope: VisibilityScope.ALL,
+            order: 0,
+            isDeleted: false
         })
 
         // 写入 space_dept
         if (deptId) {
             await strapiClient.create<SpaceDept>('space-depts', {
-                space_id: spaceResult.data.documentId,
-                dept_id: deptId
+                spaceId: spaceResult.data.documentId,
+                deptId: deptId
             })
         } else {
             console.warn('No deptId provided, skipping space_dept creation', spaceResult.data.creator)
@@ -267,17 +346,18 @@ class SpaceService {
 
         if (space) {
             // 通过 Strapi 软删除空间
-            await strapiClient.update<any>('spaces', space.documentId, { isDeleted: true })
+            await strapiClient.update<Space>('spaces', space.documentId, { isDeleted: true })
         }
     }
 
     /**
      * 获取空间下的文件夹
      */
-    async getSpaceFolders(spaceId: string, parentFolderId: string, visibleIds: string[]): Promise<SpaceFolder[]> {
+    async getSpaceFolders(input: GetSpaceFoldersInput): Promise<SpaceFolder[]> {
+        const { spaceId, parentFolderId, visibleIds } = input
         const ds = getDataSource()
         const folders = await ds.getRepository(SpaceFolder).find({
-            where: { spaceId, parentId: parentFolderId, isDeleted: 0 },
+            where: { spaceId, parentId: parentFolderId },
             order: { order: 'ASC', id: 'ASC' }
         })
 
@@ -287,7 +367,8 @@ class SpaceService {
     /**
      * 同步部门权限
      */
-    async syncFromSpaceDept(username: string, deptId: string): Promise<number> {
+    async syncFromSpaceDept(input: SyncFromSpaceDeptInput): Promise<number> {
+        const { username, deptId } = input
         const ds = getDataSource()
 
         const spaceDepts = await ds.getRepository(SpaceDept).find({
@@ -302,8 +383,8 @@ class SpaceService {
 
             if (!existing) {
                 // 通过 Strapi 创建用户空间权限
-                await strapiClient.create<any>('user-space-auths', {
-                    spaceId: Number(sd.spaceId),
+                await strapiClient.create<UserSpaceAuth>('user-space-auths', {
+                    spaceId: sd.spaceId,
                     username,
                     canRead: true,
                     canCreateFolder: true,
@@ -321,21 +402,21 @@ class SpaceService {
     /**
      * 获取空间成员列表
      */
-    async getSpaceMembers(spaceId: string, page: number, pageSize: number): Promise<{ members: UserSpaceAuth[]; total: number }> {
+    async getSpaceMembers(input: GetSpaceMembersInput): Promise<UserSpaceAuth[]> {
+        const { spaceId } = input
         const ds = getDataSource()
-        const [members, total] = await ds.getRepository(UserSpaceAuth).findAndCount({
+        const members = await ds.getRepository(UserSpaceAuth).find({
             where: { spaceId },
             order: { ctime: 'DESC' },
-            skip: (page - 1) * pageSize,
-            take: pageSize
         })
-        return { members, total }
+        return members
     }
 
     /**
      * 批量添加成员
      */
-    async addSpaceMembers(spaceId: string, members: AddMemberInput[]): Promise<UserSpaceAuth[]> {
+    async addSpaceMembers(input: AddSpaceMembersInput): Promise<UserSpaceAuth[]> {
+        const { spaceId, members } = input
         const ds = getDataSource()
         const added: UserSpaceAuth[] = []
 
@@ -347,7 +428,7 @@ class SpaceService {
             if (!existing) {
                 // 通过 Strapi 创建用户空间权限
                 const result = await strapiClient.create<UserSpaceAuth>('user-space-auths', {
-                    spaceId: Number(spaceId),
+                    spaceId: spaceId,
                     username: member.username,
                     canRead: member.canRead === 1 || member.canRead === undefined,
                     canCreateFolder: member.canCreateFolder === 1,
@@ -372,7 +453,8 @@ class SpaceService {
     /**
      * 获取空间成员
      */
-    async getSpaceMember(spaceId: string, username: string): Promise<UserSpaceAuth | null> {
+    async getSpaceMember(input: GetSpaceMemberInput): Promise<UserSpaceAuth | null> {
+        const { spaceId, username } = input
         const ds = getDataSource()
         return ds.getRepository(UserSpaceAuth).findOne({
             where: { spaceId, username }
@@ -382,7 +464,8 @@ class SpaceService {
     /**
      * 更新成员权限
      */
-    async updateSpaceMember(spaceId: string, username: string, input: UpdateMemberInput): Promise<UserSpaceAuth | null> {
+    async updateSpaceMember(input: UpdateSpaceMemberInput2): Promise<UserSpaceAuth | null> {
+        const { spaceId, username, input: updateInput } = input
         const ds = getDataSource()
         const auth = await ds.getRepository(UserSpaceAuth).findOne({
             where: { spaceId, username }
@@ -394,13 +477,13 @@ class SpaceService {
 
         // 转换为 Strapi 格式的 boolean
         const strapiInput: Record<string, unknown> = {}
-        if (input.canRead !== undefined) strapiInput.canRead = input.canRead === 1
-        if (input.canCreateFolder !== undefined) strapiInput.canCreateFolder = input.canCreateFolder === 1
-        if (input.canCreateDoc !== undefined) strapiInput.canCreateDoc = input.canCreateDoc === 1
-        if (input.superAdmin !== undefined) strapiInput.superAdmin = input.superAdmin === 1
+        if (updateInput.canRead !== undefined) strapiInput.canRead = updateInput.canRead === 1
+        if (updateInput.canCreateFolder !== undefined) strapiInput.canCreateFolder = updateInput.canCreateFolder === 1
+        if (updateInput.canCreateDoc !== undefined) strapiInput.canCreateDoc = updateInput.canCreateDoc === 1
+        if (updateInput.superAdmin !== undefined) strapiInput.superAdmin = updateInput.superAdmin === 1
 
         // 通过 Strapi 更新
-        await strapiClient.update<any>('user-space-auths', auth.documentId, strapiInput)
+        await strapiClient.update<UserSpaceAuth>('user-space-auths', auth.documentId, strapiInput)
 
         // 重新查询获取完整数据
         const updatedAuth = await ds.getRepository(UserSpaceAuth).findOne({
@@ -412,7 +495,8 @@ class SpaceService {
     /**
      * 移除成员
      */
-    async removeSpaceMember(spaceId: string, username: string): Promise<void> {
+    async removeSpaceMember(input: RemoveSpaceMemberInput): Promise<void> {
+        const { spaceId, username } = input
         const ds = getDataSource()
         const auth = await ds.getRepository(UserSpaceAuth).findOne({
             where: { spaceId, username }
@@ -422,6 +506,16 @@ class SpaceService {
             // 通过 Strapi 删除
             await strapiClient.delete('user-space-auths', auth.documentId)
         }
+    }
+
+    /**
+     * 获取空间根目录
+     */
+    async getRootFolder(spaceId: string): Promise<SpaceFolder | null> {
+        const ds = getDataSource()
+        return ds.getRepository(SpaceFolder).findOne({
+            where: { spaceId, parentId: ''}
+        })
     }
 }
 

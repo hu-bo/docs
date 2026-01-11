@@ -4,15 +4,21 @@ import { Doc, AccessMode } from '../entities/Doc'
 import { DocFolder } from '../entities/DocFolder'
 import { DocUserAcl, DocPerm } from '../entities/DocUserAcl'
 import { DocSpaceAcl, DocSpacePerm } from '../entities/DocSpaceAcl'
+import { Space } from '../entities/Space'
+import { SpaceFolder } from '../entities/SpaceFolder'
 import { DocUserActivity } from '../entities/DocUserActivity'
+import { logger } from '../utils/logger'
+import { spaceFolderService } from './space-folder'
 
 export interface CreateDocumentInput {
     spaceId: string
     folderId: string
+    parentId?: string
     title: string
     content?: string
     accessMode?: string
-    tags?: string
+    tags?: string[]
+    username: string
 }
 
 export interface UpdateDocumentInput {
@@ -27,13 +33,75 @@ export interface AddDocMemberInput {
     perm: string
 }
 
+export interface UpdateDocActivityInput {
+    docId: string
+    username: string
+    action: 'view' | 'edit'
+}
+
+export interface GetDocMembersInput {
+    documentId: string
+}
+
+export interface AddDocMembersInput {
+    documentId: string
+    members: AddDocMemberInput[]
+}
+
+export interface UpdateDocMemberInput {
+    documentId: string
+    username: string
+    perm: DocPerm
+}
+
+export interface RemoveDocMemberInput {
+    documentId: string
+    username: string
+}
+
+export interface CreateDocUserAclInput {
+    documentId: string
+    username: string
+    perm: DocPerm
+}
+
+export interface GetDocUserAclInput {
+    documentId: string
+    username: string
+}
+
+export interface BindDocToSpaceInput {
+    documentId: string
+    spaceId: string
+    folderId: string
+    perm: DocSpacePerm
+}
+
+export interface UnbindDocFromSpaceInput {
+    documentId: string
+    spaceId: string
+}
+
+export interface IsDocBoundToSpaceInput {
+    documentId: string
+    spaceId: string
+}
+
+export interface MoveDocumentInput {
+    documentId: string
+    folderId: string
+}
+
 class DocumentService {
     /**
      * 获取用户最近访问的文档
      */
-    async getRecentDocuments(username: string, limit: number = 100) {
+    async getRecentDocuments(username: string, options: {
+         limit?: number
+         spaceId?: string
+    }) {
         const ds = getDataSource()
-
+        const { limit = 100, spaceId } = options
         const [activities, total] = await ds.getRepository(DocUserActivity).findAndCount({
             where: { username },
             order: { lastViewedAt: 'DESC' },
@@ -49,6 +117,23 @@ class DocumentService {
             where: docIds.map(id => ({ documentId: id, isDeleted: 0 }))
         })
 
+        // 查询文档绑定的空间（取第一个绑定的空间作为主空间）
+        const docSpaceBindings = await ds
+            .getRepository(DocSpaceAcl)
+            .createQueryBuilder('dsa')
+            .select(['dsa.docId as docId', 's.documentId as spaceDocumentId'])
+            .innerJoin(Space, 's', 's.documentId = dsa.spaceId')
+            .where('dsa.docId IN (:...docIds)', { docIds })
+            .getRawMany<{ docId: string; spaceDocumentId: string }>()
+
+        // 构建 docId -> spaceDocumentId 映射（取第一个）
+        const docSpaceMap = new Map<string, string>()
+        for (const binding of docSpaceBindings) {
+            if (!docSpaceMap.has(binding.docId)) {
+                docSpaceMap.set(binding.docId, binding.spaceDocumentId)
+            }
+        }
+
         const docMap = new Map(docs.map(d => [d.documentId, d]))
 
         const result = activities
@@ -57,9 +142,74 @@ class DocumentService {
                 if (!doc) return null
                 return {
                     ...doc,
+                    spaceId: docSpaceMap.get(activity.docId) || null,
                     lastViewedAt: activity.lastViewedAt,
                     lastEditedAt: activity.lastEditedAt,
                     visitCount: activity.visitCount
+                }
+            })
+            .filter(Boolean)
+
+        return result
+    }
+
+    /**
+     * 获取用户参与的文档（在 DocUserAcl 白名单中的文档）
+     */
+    async getParticipatedDocuments(username: string, options: {
+        limit?: number
+    }) {
+        const ds = getDataSource()
+        const { limit = 100 } = options
+
+        // 查询用户有权限的文档
+        const acls = await ds.getRepository(DocUserAcl).find({
+            where: { username },
+            order: { ctime: 'DESC' },
+            take: limit
+        })
+
+        if (acls.length === 0) {
+            return []
+        }
+
+        const docIds = acls.map(a => a.docId)
+        const docs = await ds.getRepository(Doc).find({
+            where: docIds.map(id => ({ documentId: id, isDeleted: 0 }))
+        })
+
+        // 查询文档绑定的空间
+        const docSpaceBindings = await ds
+            .getRepository(DocSpaceAcl)
+            .createQueryBuilder('dsa')
+            .select(['dsa.docId as docId', 's.documentId as spaceDocumentId', 's.name as spaceName'])
+            .innerJoin(Space, 's', 's.documentId = dsa.spaceId')
+            .where('dsa.docId IN (:...docIds)', { docIds })
+            .getRawMany<{ docId: string; spaceDocumentId: string; spaceName: string }>()
+
+        // 构建 docId -> space 信息映射（取第一个）
+        const docSpaceMap = new Map<string, { spaceId: string; spaceName: string }>()
+        for (const binding of docSpaceBindings) {
+            if (!docSpaceMap.has(binding.docId)) {
+                docSpaceMap.set(binding.docId, {
+                    spaceId: binding.spaceDocumentId,
+                    spaceName: binding.spaceName
+                })
+            }
+        }
+
+        const docMap = new Map(docs.map(d => [d.documentId, d]))
+
+        const result = acls
+            .map(acl => {
+                const doc = docMap.get(acl.docId)
+                if (!doc) return null
+                const spaceInfo = docSpaceMap.get(acl.docId)
+                return {
+                    ...doc,
+                    spaceId: spaceInfo?.spaceId || null,
+                    spaceName: spaceInfo?.spaceName || null,
+                    perm: acl.perm
                 }
             })
             .filter(Boolean)
@@ -80,36 +230,48 @@ class DocumentService {
     /**
      * 创建文档
      */
-    async createDocument(input: CreateDocumentInput, username: string): Promise<Doc> {
+    async createDocument(input: CreateDocumentInput): Promise<Doc> {
+        const { username } = input
         const ds = getDataSource()
 
         // 通过 Strapi 创建文档
-        const docResult = await strapiClient.create<any>('docs', {
+        const docResult = await strapiClient.create<Doc>('docs', {
             title: input.title,
             content: input.content || '',
             accessMode: input.accessMode || AccessMode.OPEN_READONLY,
             owner: username,
-            tags: input.tags || '',
+            tags: input.tags ? JSON.stringify(input.tags) : '[]',
             isDeleted: false
         })
-        const docId = docResult.data.document_id
+        const docId = docResult.data.documentId
+
+        // 如果没有指定 folderId，获取空间根目录
+        let folderId = input.folderId
+        if (!folderId) {
+            const rootFolder = await ds.getRepository(SpaceFolder).findOne({
+                where: { spaceId: input.spaceId, parentId: '' }
+            })
+            if (rootFolder) {
+                folderId = rootFolder.documentId
+            }
+        }
 
         // 通过 Strapi 创建文档-目录关联
-        await strapiClient.create<any>('doc-folders', {
-            doc_id: docResult.data.id,
-            folder_id: Number(input.folderId)
+        await strapiClient.create<DocFolder>('doc-folders', {
+            docId: docId,
+            folderId: folderId || ''
         })
 
         // 通过 Strapi 创建文档-空间ACL（默认READ权限）
-        await strapiClient.create<any>('doc-space-acls', {
-            docId: docResult.data.id,
-            spaceId: Number(input.spaceId),
+        await strapiClient.create<DocSpaceAcl>('doc-space-acls', {
+            docId: docResult.data.documentId,
+            spaceId: input.spaceId,
             perm: DocSpacePerm.READ
         })
 
         // 重新查询获取完整数据
         const doc = await ds.getRepository(Doc).findOne({
-            where: { id: docId }
+            where: { documentId: docId }
         })
 
         return doc!
@@ -137,7 +299,7 @@ class DocumentService {
         if (input.tags !== undefined) strapiInput.tags = input.tags
 
         // 通过 Strapi 更新
-        await strapiClient.update<any>('docs', doc.documentId, strapiInput)
+        await strapiClient.update<Doc>('docs', doc.documentId, strapiInput)
 
         // 重新查询获取完整数据
         const updatedDoc = await ds.getRepository(Doc).findOne({
@@ -157,7 +319,7 @@ class DocumentService {
 
         if (doc) {
             // 通过 Strapi 软删除
-            await strapiClient.update<any>('docs', doc.documentId, { isDeleted: true })
+            await strapiClient.update<Doc>('docs', doc.documentId, { isDeleted: true })
         }
     }
 
@@ -174,7 +336,8 @@ class DocumentService {
     /**
      * 移动文档到其他目录
      */
-    async moveDocument(documentId: string, folderId: string): Promise<void> {
+    async moveDocument(input: MoveDocumentInput): Promise<void> {
+        const { documentId, folderId } = input
         const ds = getDataSource()
         const docFolder = await ds.getRepository(DocFolder).findOne({
             where: { docId: documentId }
@@ -182,8 +345,8 @@ class DocumentService {
 
         if (docFolder) {
             // 通过 Strapi 更新文档目录
-            await strapiClient.update<any>('doc-folders', docFolder.documentId, {
-                folder_id: Number(folderId)
+            await strapiClient.update<DocFolder>('doc-folders', docFolder.documentId, {
+                folder_id: folderId
             })
         }
     }
@@ -191,7 +354,8 @@ class DocumentService {
     /**
      * 更新文档访问/编辑记录
      */
-    async updateDocActivity(docId: string, username: string, action: 'view' | 'edit'): Promise<void> {
+    async updateDocActivity(input: UpdateDocActivityInput): Promise<void> {
+        const { docId, username, action } = input
         const ds = getDataSource()
 
         let activity = await ds.getRepository(DocUserActivity).findOne({
@@ -202,8 +366,8 @@ class DocumentService {
 
         if (!activity) {
             // 通过 Strapi 创建活动记录
-            await strapiClient.create<any>('doc-user-activities', {
-                docId: Number(docId),
+            await strapiClient.create<DocUserActivity>('doc-user-activities', {
+                docId: docId,
                 username,
                 lastViewedAt: action === 'view' ? now : null,
                 visitCount: action === 'view' ? 1 : 0,
@@ -218,14 +382,15 @@ class DocumentService {
             } else {
                 updateData.lastEditedAt = now
             }
-            await strapiClient.update<any>('doc-user-activities', activity.documentId, updateData)
+            await strapiClient.update<DocUserActivity>('doc-user-activities', activity.documentId, updateData)
         }
     }
 
     /**
      * 获取用户文档ACL
      */
-    async getDocUserAcl(documentId: string, username: string): Promise<DocUserAcl | null> {
+    async getDocUserAcl(input: GetDocUserAclInput): Promise<DocUserAcl | null> {
+        const { documentId, username } = input
         const ds = getDataSource()
         return ds.getRepository(DocUserAcl).findOne({
             where: { docId: documentId, username }
@@ -235,12 +400,13 @@ class DocumentService {
     /**
      * 创建用户文档ACL
      */
-    async createDocUserAcl(documentId: string, username: string, perm: DocPerm): Promise<DocUserAcl> {
+    async createDocUserAcl(input: CreateDocUserAclInput): Promise<DocUserAcl> {
+        const { documentId, username, perm } = input
         const ds = getDataSource()
 
         // 通过 Strapi 创建
-        const result = await strapiClient.create<any>('doc-user-acls', {
-            docId: Number(documentId),
+        const result = await strapiClient.create<DocUserAcl>('doc-user-acls', {
+            docId: documentId,
             username,
             perm
         })
@@ -256,21 +422,21 @@ class DocumentService {
     /**
      * 获取文档成员列表
      */
-    async getDocMembers(documentId: string, page: number, pageSize: number): Promise<{ members: DocUserAcl[]; total: number }> {
+    async getDocMembers(input: GetDocMembersInput): Promise<DocUserAcl[]> {
+        const { documentId } = input
         const ds = getDataSource()
-        const [members, total] = await ds.getRepository(DocUserAcl).findAndCount({
+        const members = await ds.getRepository(DocUserAcl).find({
             where: { docId: documentId },
-            order: { ctime: 'DESC' },
-            skip: (page - 1) * pageSize,
-            take: pageSize
+            order: { ctime: 'DESC' }
         })
-        return { members, total }
+        return members
     }
 
     /**
      * 批量添加文档成员
      */
-    async addDocMembers(documentId: string, members: AddDocMemberInput[]): Promise<DocUserAcl[]> {
+    async addDocMembers(input: AddDocMembersInput): Promise<DocUserAcl[]> {
+        const { documentId, members } = input
         const ds = getDataSource()
         const added: DocUserAcl[] = []
 
@@ -282,7 +448,7 @@ class DocumentService {
             if (!existing) {
                 // 通过 Strapi 创建
                 const result = await strapiClient.create<DocUserAcl>('doc-user-acls', {
-                    docId: Number(documentId),
+                    docId: documentId,
                     username: member.username,
                     perm: member.perm
                 })
@@ -303,7 +469,8 @@ class DocumentService {
     /**
      * 更新文档成员权限
      */
-    async updateDocMember(documentId: string, username: string, perm: DocPerm): Promise<DocUserAcl | null> {
+    async updateDocMember(input: UpdateDocMemberInput): Promise<DocUserAcl | null> {
+        const { documentId, username, perm } = input
         const ds = getDataSource()
         const acl = await ds.getRepository(DocUserAcl).findOne({
             where: { docId: documentId, username }
@@ -314,7 +481,7 @@ class DocumentService {
         }
 
         // 通过 Strapi 更新
-        await strapiClient.update<any>('doc-user-acls', acl.documentId, { perm })
+        await strapiClient.update<DocUserAcl>('doc-user-acls', acl.documentId, { perm })
 
         // 重新查询获取完整数据
         const updatedAcl = await ds.getRepository(DocUserAcl).findOne({
@@ -326,7 +493,8 @@ class DocumentService {
     /**
      * 移除文档成员
      */
-    async removeDocMember(documentId: string, username: string): Promise<void> {
+    async removeDocMember(input: RemoveDocMemberInput): Promise<void> {
+        const { documentId, username } = input
         const ds = getDataSource()
         const acl = await ds.getRepository(DocUserAcl).findOne({
             where: { docId: documentId, username }
@@ -339,19 +507,36 @@ class DocumentService {
     }
 
     /**
-     * 获取文档绑定的空间列表
+     * 获取文档绑定的空间列表（含空间名称）
      */
-    async getDocSpaces(documentId: string): Promise<DocSpaceAcl[]> {
+    async getDocSpaces(documentId: string) {
         const ds = getDataSource()
-        return ds.getRepository(DocSpaceAcl).find({
-            where: { docId: documentId }
-        })
+        return ds
+            .getRepository(DocSpaceAcl)
+            .createQueryBuilder('doc_space_acl')
+            .select([
+                'doc_space_acl.id as id',
+                'doc_space_acl.spaceId as spaceId',
+                'doc_space_acl.perm as perm',
+                'space.name as spaceName',
+                'space.documentId as spaceDocumentId',
+            ])
+            .innerJoin(Space, 'space', 'space.documentId = doc_space_acl.spaceId')
+            .where('doc_space_acl.docId = :documentId', { documentId })
+            .getRawMany<{
+                id: number
+                spaceId: string
+                perm: DocSpacePerm
+                spaceName: string
+                spaceDocumentId: string
+            }>()
     }
 
     /**
      * 检查文档是否已绑定到空间
      */
-    async isDocBoundToSpace(documentId: string, spaceId: string): Promise<boolean> {
+    async isDocBoundToSpace(input: IsDocBoundToSpaceInput): Promise<boolean> {
+        const { documentId, spaceId } = input
         const ds = getDataSource()
         const existing = await ds.getRepository(DocSpaceAcl).findOne({
             where: { docId: documentId, spaceId }
@@ -362,22 +547,35 @@ class DocumentService {
     /**
      * 绑定文档到新空间
      */
-    async bindDocToSpace(documentId: string, spaceId: string, folderId: string, perm: DocSpacePerm): Promise<DocSpaceAcl> {
+    async bindDocToSpace(input: BindDocToSpaceInput): Promise<DocSpaceAcl> {
+        const { documentId, spaceId, perm } = input
+        let { folderId } = input
         const ds = getDataSource()
 
-        // 通过 Strapi 创建文档空间ACL
-        const aclResult = await strapiClient.create<DocSpaceAcl>('doc-space-acls', {
-            docId: Number(documentId),
-            spaceId: Number(spaceId),
-            perm
-        })
+        // 如果没有指定 folderId，获取空间根目录
+        if (!folderId) {
+            console.log('No folderId specified, fetching root folder')
+            const rootFolder = await ds.getRepository(SpaceFolder).findOne({
+                where: { spaceId, parentId: '' }
+            })
+            if (rootFolder) {
+                folderId = rootFolder.documentId
+            }
+        }
 
         // 通过 Strapi 创建文档目录关联
-        await strapiClient.create<DocFolder>('doc-folders', {
-            doc_id: Number(documentId),
-            folder_id: Number(folderId)
+        let df = await strapiClient.create<DocFolder>('doc-folders', {
+            docId: documentId,
+            folderId: folderId || ''
         })
-
+        console.log('Created DocFolder:', df.data)
+        // 通过 Strapi 创建文档空间ACL
+        const aclResult = await strapiClient.create<DocSpaceAcl>('doc-space-acls', {
+            docId: documentId,
+            spaceId: spaceId,
+            perm
+        })
+        console.log('Created DocSpaceAcl:', aclResult.data)
         // 重新查询获取完整数据
         const acl = await ds.getRepository(DocSpaceAcl).findOne({
             where: { documentId: aclResult.data.documentId }
@@ -389,7 +587,8 @@ class DocumentService {
     /**
      * 解除文档与空间的绑定
      */
-    async unbindDocFromSpace(documentId: string, spaceId: string): Promise<void> {
+    async unbindDocFromSpace(input: UnbindDocFromSpaceInput): Promise<void> {
+        const { documentId, spaceId } = input
         const ds = getDataSource()
 
         // 查找并删除 DocSpaceAcl
@@ -404,9 +603,14 @@ class DocumentService {
         const docFolder = await ds.getRepository(DocFolder).findOne({
             where: { docId: documentId }
         })
-        if (docFolder) {
+        const spaceFolder = await ds.getRepository(SpaceFolder).findOne({
+            where: { spaceId, documentId: docFolder ? docFolder.folderId : '' }
+        })
+        if (docFolder && spaceFolder) {
             await strapiClient.delete('doc-folders', docFolder.documentId)
+            await spaceFolderService.deleteFolder(spaceFolder.documentId)
         }
+
     }
 }
 

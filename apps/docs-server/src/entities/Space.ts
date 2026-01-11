@@ -22,7 +22,8 @@ export class Space {
     @Column({ name: 'is_deleted', type: 'tinyint', default: 0 })
     isDeleted: number
 
-    @Column({ name: 'document_id', type: 'varchar', length: 128, comment: 'strapi 生成' })
+    @Index('IDX_space_id')
+@Column({ name: 'document_id', type: 'varchar', length: 128, comment: 'strapi 生成' })
     documentId: string
 
     @Column({ type: 'varchar', length: 128 })

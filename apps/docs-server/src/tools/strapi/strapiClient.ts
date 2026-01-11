@@ -13,13 +13,21 @@ export interface StrapiResponse<T = unknown> {
     }
 }
 
+export interface StrapiValidationErrorDetail {
+    path: string[]
+    message: string
+    name: string
+}
+
 export interface StrapiErrorResponse {
     data: null
     error: {
         status: number
         name: string
         message: string
-        details?: unknown
+        details?: {
+            errors?: StrapiValidationErrorDetail[]
+        } | unknown
     }
 }
 
@@ -32,6 +40,27 @@ export interface StrapiRecord {
 }
 
 /**
+ * 从 details 中提取详细错误信息
+ */
+function extractDetailedMessage(message: string, details?: unknown): string {
+    if (!details || typeof details !== 'object') {
+        return message
+    }
+
+    const detailsObj = details as { errors?: StrapiValidationErrorDetail[] }
+    if (!Array.isArray(detailsObj.errors) || detailsObj.errors.length === 0) {
+        return message
+    }
+
+    const errorMessages = detailsObj.errors.map((err) => {
+        const path = err.path?.join('.') || ''
+        return path ? `${path}: ${err.message}` : err.message
+    })
+
+    return `${message}: ${errorMessages.join('; ')}`
+}
+
+/**
  * Strapi 自定义错误类
  */
 export class StrapiError extends Error {
@@ -40,7 +69,9 @@ export class StrapiError extends Error {
     public readonly details?: unknown
 
     constructor(status: number, name: string, message: string, details?: unknown) {
-        super(message)
+        // 展开 ValidationError 的详细信息
+        const detailedMessage = extractDetailedMessage(message, details)
+        super(detailedMessage)
         this.name = 'StrapiError'
         this.status = status
         this.errorName = name
@@ -78,6 +109,7 @@ class StrapiClient {
         if (axios.isAxiosError(error)) {
             const axiosError = error as AxiosError<StrapiErrorResponse>
             const strapiError = axiosError.response?.data?.error
+            console.error(axiosError.request.path, axiosError.response?.data)
             if (strapiError) {
                 throw new StrapiError(
                     strapiError.status,

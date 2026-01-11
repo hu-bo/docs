@@ -30,10 +30,10 @@ export class DocSpaceAcl {
     @Column({ name: 'document_id', type: 'varchar', length: 128 })
     documentId: string
 
-    @Column({ name: 'doc_id', type: 'bigint', default: '0' })
+    @Column({ name: 'doc_id', type: 'bigint', default: '' })
     docId: string
 
-    @Column({ name: 'space_id', type: 'bigint', default: '0' })
+    @Column({ name: 'space_id', type: 'bigint', default: '' })
     spaceId: string
 
     @Column({ type: 'enum', enum: DocSpacePerm })

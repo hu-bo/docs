@@ -1,12 +1,12 @@
 <script setup lang="ts">
-import dayjs from 'dayjs';
-import 'dayjs/locale/zh-cn';
-
-dayjs.locale('zh-cn');
+import NotificationToast from '@/components/NotificationToast.vue';
 </script>
 
 <template>
-  <router-view />
+  <div>
+    <router-view />
+    <NotificationToast />
+  </div>
 </template>
 
 <style>

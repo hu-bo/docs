@@ -3,6 +3,7 @@ import permitMiddleware from '../../middlewares/permit'
 import {
     getFolderDocuments,
     getFolderTree,
+    getFolderContents,
     createFolder,
     updateFolder,
     deleteFolder
@@ -16,6 +17,7 @@ router.use(permitMiddleware)
 // 目录内容查询
 router.get('/documents', getFolderDocuments)
 router.get('/tree', getFolderTree)
+router.get('/contents', getFolderContents)
 
 // 目录 CRUD
 router.post('/', createFolder)

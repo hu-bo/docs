@@ -7,14 +7,14 @@
     "displayName": "DocFolder"
   },
   "options": {
-    "draftAndPublish": true
+    "draftAndPublish": false
   },
   "pluginOptions": {},
   "attributes": {
-    "doc_id": {
+    "docId": {
       "type": "string"
     },
-    "folder_id": {
+    "folderId": {
       "type": "string"
     },
     "ctime": {

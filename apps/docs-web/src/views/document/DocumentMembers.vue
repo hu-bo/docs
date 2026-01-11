@@ -5,7 +5,7 @@ import { ArrowLeft, UserPlus } from 'lucide-vue-next';
 import { useDocumentStore } from '@/stores/document';
 import { useUserStore } from '@/stores/user';
 import MemberList from '@/components/MemberList.vue';
-import type { DocUserAcl, DocPerm } from '@/types';
+import type { DocUserAcl, DocPerm, UserSpaceAuth } from '@/types';
 
 const route = useRoute();
 const router = useRouter();
@@ -49,9 +49,9 @@ async function handleAddMember() {
   adding.value = true;
   try {
     await documentStore.addDocMembers(documentId.value, [{
-      username: newMemberUsername.value.trim(),
-      perm: newMemberPerm.value,
-    }]);
+        username: newMemberUsername.value.trim(),
+        perm: newMemberPerm.value,
+      }]);
 
     showAddMemberModal.value = false;
     newMemberUsername.value = '';
@@ -63,7 +63,8 @@ async function handleAddMember() {
   }
 }
 
-function handleEditMember(member: DocUserAcl) {
+function handleEditMember(member: UserSpaceAuth | DocUserAcl) {
+  if (!('perm' in member)) return; // Type guard for DocUserAcl
   editingMember.value = member;
   editPerm.value = member.perm;
   showEditMemberModal.value = true;

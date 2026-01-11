@@ -96,10 +96,10 @@ function resetNewMemberPermissions() {
 function handleEditMember(member: UserSpaceAuth) {
   editingMember.value = member;
   editPermissions.value = {
-    canRead: member.canRead,
-    canCreateFolder: member.canCreateFolder,
-    canCreateDoc: member.canCreateDoc,
-    superAdmin: member.superAdmin,
+    canRead: Boolean(member.canRead),
+    canCreateFolder: Boolean(member.canCreateFolder),
+    canCreateDoc: Boolean(member.canCreateDoc),
+    superAdmin: Boolean(member.superAdmin),
   };
   showEditMemberModal.value = true;
 }

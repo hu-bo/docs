@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { ref, onMounted, onBeforeUnmount, computed, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
-import { Save, X, Trash2, Settings } from 'lucide-vue-next';
+import { Save, X, Trash2, Settings, Clock } from 'lucide-vue-next';
+import dayjs from 'dayjs';
 import { useDocumentStore } from '@/stores/document';
 import { useSpaceStore } from '@/stores/space';
 import { useUserStore } from '@/stores/user';
@@ -18,6 +19,20 @@ const userStore = useUserStore();
 
 const spaceId = computed(() => route.params.spaceId as string);
 const documentId = computed(() => route.params.documentId as string);
+const isNewDocument = computed(() => route.name === 'DocumentNew' || route.name === 'FolderDocumentNew');
+const folderPath = computed(() => route.params.folderPath as string | string[] | undefined);
+const folderId = computed(() => {
+  // First check query param (from context menu "add document in folder")
+  if (route.query.folderId) {
+    return route.query.folderId as string;
+  }
+  // Then check route params (from FolderDocumentNew route)
+  if (folderPath.value) {
+    const segments = Array.isArray(folderPath.value) ? folderPath.value : [folderPath.value];
+    return segments[segments.length - 1];
+  }
+  return undefined;
+});
 
 const title = ref('');
 const content = ref('');
@@ -26,6 +41,7 @@ const saving = ref(false);
 const deleting = ref(false);
 const showSettingsModal = ref(false);
 const hasChanges = ref(false);
+const lastSavedAt = ref<string | null>(null);
 
 const collabOptions = computed(() => ({
   documentId: documentId.value,
@@ -45,8 +61,10 @@ const {
 } = useCollaboration(collabOptions);
 
 onMounted(async () => {
-  await loadDocument();
-  await connect();
+  if (!isNewDocument.value) {
+    await loadDocument();
+    await connect();
+  }
 });
 
 onBeforeUnmount(() => {
@@ -69,6 +87,7 @@ async function loadDocument() {
     title.value = doc.title;
     content.value = doc.content || '';
     accessMode.value = doc.accessMode;
+    lastSavedAt.value = doc.mtime;
     hasChanges.value = false;
   } catch (error) {
     console.error('Failed to load document:', error);
@@ -92,14 +111,35 @@ async function handleSave() {
 
   saving.value = true;
   try {
-    await documentStore.updateDocument(documentId.value, {
-      title: title.value.trim(),
-      content: content.value,
-      accessMode: accessMode.value,
-    });
+    if (isNewDocument.value) {
+      // 创建新文档
+      const newDoc = await documentStore.createDocument({
+        title: title.value.trim(),
+        spaceId: spaceId.value,
+        folderId: folderId.value || '',
+        accessMode: accessMode.value,
+        content: content.value,
+      });
 
-    hasChanges.value = false;
-    await documentStore.fetchDocumentTree(spaceId.value);
+      await documentStore.fetchDocumentTree(spaceId.value);
+      hasChanges.value = false;
+
+      // 跳转到编辑页面
+      router.replace({
+        name: 'DocumentEdit',
+        params: { spaceId: spaceId.value, documentId: newDoc.documentId },
+      });
+    } else {
+      const updated = await documentStore.updateDocument(documentId.value, {
+        title: title.value.trim(),
+        content: content.value,
+        accessMode: accessMode.value,
+      });
+
+      lastSavedAt.value = updated.mtime;
+      hasChanges.value = false;
+      await documentStore.fetchDocumentTree(spaceId.value);
+    }
   } catch (error) {
     console.error('Failed to save document:', error);
     alert('保存失败，请重试');
@@ -126,6 +166,12 @@ async function handleDelete() {
 
 function handleCancel() {
   if (hasChanges.value && !confirm('有未保存的更改，确定要离开吗？')) {
+    return;
+  }
+
+  if (isNewDocument.value) {
+    // 新建文档取消时返回空间首页
+    router.push({ name: 'SpaceHome', params: { spaceId: spaceId.value } });
     return;
   }
 
@@ -171,6 +217,11 @@ function saveSettings() {
           </div>
 
           <CollaborationUsers v-if="onlineUsers.length > 0" :users="onlineUsers" />
+
+          <div v-if="lastSavedAt" class="flex items-center gap-1 text-xs opacity-60">
+            <Clock class="w-3 h-3" />
+            <span>{{ dayjs(lastSavedAt).format('YYYY-MM-DD HH:mm:ss') }}</span>
+          </div>
         </div>
 
         <!-- Right: Actions -->
@@ -198,7 +249,7 @@ function saveSettings() {
     </div>
 
     <!-- Editor Area -->
-    <div class="max-w-4xl mx-auto py-8 px-6">
+    <div class="max-w-4xl mx-auto py-18 px-6">
       <input
         v-model="title"
         type="text"
@@ -211,6 +262,7 @@ function saveSettings() {
         :model-value="content"
         :collaboration-extensions="collaborationExtensions"
         placeholder="开始编写内容..."
+        :editable="true"
         @update:model-value="handleContentUpdate"
       />
     </div>

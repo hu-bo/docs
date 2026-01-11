@@ -5,11 +5,6 @@ import { useSpaceStore } from '@/stores/space';
 import CreateSpaceModal from '@/components/CreateSpaceModal.vue';
 import type { Space } from '@/types';
 import dayjs from 'dayjs';
-import relativeTime from 'dayjs/plugin/relativeTime';
-import 'dayjs/locale/zh-cn';
-
-dayjs.extend(relativeTime);
-dayjs.locale('zh-cn');
 
 const spaceStore = useSpaceStore();
 
@@ -28,7 +23,7 @@ const COLORS = [
 ];
 
 function getSpaceVisuals(space: Space) {
-  const hash = space.id.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
+  const hash = String(space.id).split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
   return {
     icon: ICONS[hash % ICONS.length],
     color: COLORS[hash % COLORS.length],

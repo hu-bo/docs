@@ -2,6 +2,7 @@ import { Router, type IRouter } from 'express'
 import permitMiddleware from '../../middlewares/permit'
 import {
     getRecentDocuments,
+    getParticipatedDocuments,
     getDocument,
     createDocument,
     updateDocument,
@@ -24,6 +25,9 @@ router.use(permitMiddleware)
 
 // 最近访问的文档
 router.get('/recent', getRecentDocuments)
+
+// 我参与的文档
+router.get('/participated', getParticipatedDocuments)
 
 // 文档 CRUD
 router.get('/:documentId', getDocument)

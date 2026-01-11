@@ -36,6 +36,14 @@ export interface Space {
   isDeleted: boolean;
   ctime: string;
   mtime: string;
+  folderCount: number;
+  docCount: number;
+  permission: {
+    canRead: boolean;
+    canCreateFolder: boolean;
+    canCreateDoc: boolean;
+    isSuperAdmin: boolean;
+  }
 }
 
 export type FolderVisibility = 'ALL' | 'DEPT_ONLY';
@@ -92,13 +100,11 @@ export interface UserSpaceAuth {
   documentId: string;
   spaceId: string;
   username: string;
-  canRead: boolean;
-  canCreateFolder: boolean;
-  canCreateDoc: boolean;
-  superAdmin: boolean;
+  canRead: 1 | 0;
+  canCreateFolder: 1 | 0;
+  canCreateDoc: 1 | 0;
+  superAdmin: 1 | 0;
   source: PermSource;
-  ctime: string;
-  mtime: string;
 }
 
 export interface DocUserAcl {
@@ -107,8 +113,6 @@ export interface DocUserAcl {
   docId: string;
   username: string;
   perm: DocPerm;
-  ctime: string;
-  mtime: string;
 }
 
 export interface DocSpaceBinding {
@@ -147,7 +151,6 @@ export interface Comment {
   parentId: string | null;
   username: string;
   content: string;
-  isDeleted: boolean;
   ctime: string;
   mtime: string;
   replies?: Comment[];
@@ -159,9 +162,37 @@ export interface TreeNode {
   key: string;
   title: string;
   type: 'folder' | 'doc';
-  data: Folder | Doc;
   children?: TreeNode[];
   isLeaf?: boolean;
+  loaded?: boolean;
+  // folder fields
+  visibilityScope?: FolderVisibility;
+  // doc fields
+  accessMode?: AccessMode;
+  owner?: string;
+  mtime?: string;
+  perm?: {
+    canRead: boolean;
+    canEdit: boolean;
+  };
+}
+
+// Folder Content Item (for folder contents list view)
+export interface FolderContentItem {
+  key: string;
+  title: string;
+  type: 'folder' | 'doc';
+  // folder fields
+  visibilityScope?: FolderVisibility;
+  // doc fields
+  accessMode?: AccessMode;
+  owner?: string;
+  mtime?: string;
+  ctime?: string;
+  perm?: {
+    canRead: boolean;
+    canEdit: boolean;
+  };
 }
 
 // Collaboration Types

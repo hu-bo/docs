@@ -10,18 +10,16 @@ import {
   Send,
   MoreHorizontal,
   Trash2,
+  Reply,
+  X,
 } from 'lucide-vue-next';
 import { useDocumentStore } from '@/stores/document';
 import { useSpaceStore } from '@/stores/space';
 import { useUserStore } from '@/stores/user';
+import TiptapEditor from '@/components/editor/TiptapEditor.vue';
 import * as commentApi from '@/api/comment';
 import type { Comment } from '@/types';
 import dayjs from 'dayjs';
-import relativeTime from 'dayjs/plugin/relativeTime';
-import 'dayjs/locale/zh-cn';
-
-dayjs.extend(relativeTime);
-dayjs.locale('zh-cn');
 
 const route = useRoute();
 const router = useRouter();
@@ -36,12 +34,14 @@ const comments = ref<Comment[]>([]);
 const loadingComments = ref(false);
 const newComment = ref('');
 const submittingComment = ref(false);
+const replyingTo = ref<Comment | null>(null);
+const replyContent = ref('');
 
 const canEdit = computed(() => {
   const doc = documentStore.currentDocument;
   if (!doc) return false;
   if (doc.owner === userStore.username) return true;
-  if (spaceStore.isSuperAdmin) return true;
+  if (spaceStore.currentSpace?.permission.superAdmin) return true;
   if (doc.accessMode === 'OPEN_EDIT') return true;
   return doc.hasSpaceAuth && doc.accessMode !== 'WHITELIST_ONLY';
 });
@@ -49,7 +49,7 @@ const canEdit = computed(() => {
 const isOwnerOrAdmin = computed(() => {
   const doc = documentStore.currentDocument;
   if (!doc) return false;
-  return doc.owner === userStore.username || spaceStore.isSuperAdmin;
+  return doc.owner === userStore.username || spaceStore.currentSpace?.permission.superAdmin;
 });
 
 onMounted(async () => {
@@ -75,7 +75,7 @@ async function loadComments() {
   loadingComments.value = true;
   try {
     const data = await commentApi.getComments(documentId.value);
-    comments.value = data;
+    comments.value = data.list;
   } catch (error) {
     console.error('Failed to load comments:', error);
   } finally {
@@ -119,7 +119,8 @@ async function handleSubmitComment() {
   try {
     await commentApi.createComment({
       docId: documentId.value,
-      content: newComment.value.trim(),
+      parentId: '',
+      content: newComment.value.trim()
     });
 
     newComment.value = '';
@@ -139,6 +140,37 @@ async function handleDeleteComment(commentId: string) {
     await loadComments();
   } catch (error) {
     console.error('Failed to delete comment:', error);
+  }
+}
+
+function startReply(comment: Comment) {
+  replyingTo.value = comment;
+  replyContent.value = '';
+}
+
+function cancelReply() {
+  replyingTo.value = null;
+  replyContent.value = '';
+}
+
+async function handleSubmitReply() {
+  if (!replyingTo.value || !replyContent.value.trim()) return;
+
+  submittingComment.value = true;
+  try {
+    await commentApi.createComment({
+      docId: documentId.value,
+      parentId: replyingTo.value.documentId,
+      content: replyContent.value.trim()
+    });
+
+    replyingTo.value = null;
+    replyContent.value = '';
+    await loadComments();
+  } catch (error) {
+    console.error('Failed to submit reply:', error);
+  } finally {
+    submittingComment.value = false;
   }
 }
 
@@ -217,10 +249,12 @@ function getAccessModeBadge(mode: string) {
       <!-- Document Content -->
       <div class="card bg-base-100 shadow-sm mb-8">
         <div class="card-body">
-          <div
-            class="prose prose-sm max-w-none"
-            v-html="documentStore.currentDocument.content || '<p class=\"opacity-50\">暂无内容</p>'"
-          ></div>
+          <TiptapEditor
+            v-if="documentStore.currentDocument.content"
+            :model-value="documentStore.currentDocument.content"
+            :editable="false"
+          />
+          <p v-else class="opacity-50">暂无内容</p>
         </div>
       </div>
 
@@ -235,11 +269,10 @@ function getAccessModeBadge(mode: string) {
 
           <!-- Comment Input -->
           <div class="flex gap-3 mb-6">
-            <div class="avatar placeholder">
-              <div class="bg-primary text-primary-content w-10 rounded-full">
-                <span>{{ userStore.displayName?.charAt(0) || 'U' }}</span>
-              </div>
+            <div class="w-10 rounded-full h-12">
+              <span>{{ userStore.displayName?.charAt(0) || 'U' }}</span>
             </div>
+
             <div class="flex-1">
               <textarea
                 v-model="newComment"
@@ -273,28 +306,92 @@ function getAccessModeBadge(mode: string) {
             <div
               v-for="comment in comments"
               :key="comment.id"
-              class="flex gap-3 p-4 bg-base-200 rounded-xl"
+              class="p-4 bg-base-200 rounded-xl"
             >
-              <div class="avatar placeholder">
-                <div class="bg-neutral text-neutral-content w-10 rounded-full">
-                  <span>{{ comment.username.charAt(0).toUpperCase() }}</span>
+              <!-- Main Comment -->
+              <div class="flex gap-3">
+                <div class="avatar placeholder">
+                  <div class="w-10 rounded-full h-8">
+                    <span>{{ comment.username.charAt(0).toUpperCase() }}</span>
+                  </div>
+                </div>
+                <div class="flex-1">
+                  <div class="flex items-center justify-between">
+                    <div class="flex items-center gap-2">
+                      <span class="font-medium">{{ comment.username }}</span>
+                      <span class="text-xs opacity-50">{{ dayjs(comment.ctime).fromNow() }}</span>
+                    </div>
+                    <div class="flex items-center gap-1">
+                      <button
+                        class="btn btn-ghost btn-xs btn-square"
+                        @click="startReply(comment)"
+                        title="回复"
+                      >
+                        <Reply class="w-4 h-4" />
+                      </button>
+                      <button
+                        v-if="comment.username === userStore.username || isOwnerOrAdmin"
+                        class="btn btn-ghost btn-xs btn-square"
+                        @click="handleDeleteComment(comment.documentId)"
+                      >
+                        <Trash2 class="w-4 h-4" />
+                      </button>
+                    </div>
+                  </div>
+                  <p class="mt-2 opacity-80">{{ comment.content }}</p>
                 </div>
               </div>
-              <div class="flex-1">
-                <div class="flex items-center justify-between">
-                  <div class="flex items-center gap-2">
-                    <span class="font-medium">{{ comment.username }}</span>
-                    <span class="text-xs opacity-50">{{ dayjs(comment.ctime).fromNow() }}</span>
+
+              <!-- Reply Input -->
+              <div v-if="replyingTo?.documentId === comment.documentId" class="mt-4 ml-12 flex gap-2">
+                <input
+                  v-model="replyContent"
+                  type="text"
+                  placeholder="写下你的回复..."
+                  class="input input-bordered input-sm flex-1"
+                  @keyup.enter="handleSubmitReply"
+                />
+                <button
+                  class="btn btn-primary btn-sm"
+                  :disabled="!replyContent.trim() || submittingComment"
+                  @click="handleSubmitReply"
+                >
+                  <Send class="w-4 h-4" />
+                </button>
+                <button class="btn btn-ghost btn-sm btn-square" @click="cancelReply">
+                  <X class="w-4 h-4" />
+                </button>
+              </div>
+
+              <!-- Replies -->
+              <div v-if="comment.replies && comment.replies.length > 0" class="mt-4 ml-12 space-y-3">
+                <div
+                  v-for="reply in comment.replies"
+                  :key="reply.id"
+                  class="flex gap-3 p-3 bg-base-100 rounded-lg"
+                >
+                  <div class="avatar placeholder">
+                    <div class="w-8 rounded-full h-6 text-sm">
+                      <span>{{ reply.username.charAt(0).toUpperCase() }}</span>
+                    </div>
                   </div>
-                  <button
-                    v-if="comment.username === userStore.username || isOwnerOrAdmin"
-                    class="btn btn-ghost btn-xs btn-square"
-                    @click="handleDeleteComment(comment.documentId)"
-                  >
-                    <Trash2 class="w-4 h-4" />
-                  </button>
+                  <div class="flex-1">
+                    <div class="flex items-center justify-between">
+                      <div class="flex items-center gap-2">
+                        <span class="font-medium text-sm">{{ reply.username }}</span>
+                        <span class="text-xs opacity-50">{{ dayjs(reply.ctime).fromNow() }}</span>
+                      </div>
+                      <button
+                        v-if="reply.username === userStore.username || isOwnerOrAdmin"
+                        class="btn btn-ghost btn-xs btn-square"
+                        @click="handleDeleteComment(reply.documentId)"
+                      >
+                        <Trash2 class="w-3 h-3" />
+                      </button>
+                    </div>
+                    <p class="mt-1 text-sm opacity-80">{{ reply.content }}</p>
+                  </div>
                 </div>
-                <p class="mt-2 opacity-80">{{ comment.content }}</p>
               </div>
             </div>
           </div>

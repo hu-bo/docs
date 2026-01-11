@@ -22,10 +22,10 @@ export class DocFolder {
     documentId: string
 
     @Index('IDX_doc_id')
-    @Column({ name: 'doc_id', type: 'bigint', default: '0' })
+    @Column({ name: 'doc_id', type: 'varchar', length: 128 })
     docId: string
 
     @Index('IDX_folder_id')
-    @Column({ name: 'folder_id', type: 'bigint', default: '0' })
+    @Column({ name: 'folder_id', type: 'varchar', length: 128 })
     folderId: string
 }

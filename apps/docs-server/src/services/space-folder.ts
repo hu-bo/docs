@@ -13,14 +13,21 @@ export interface DocWithPerm extends Doc {
     }
 }
 
-export interface FolderTreeNode {
-    id: string
-    name: string
-    parentId: string
-    visibilityScope: VisibilityScope
-    order: number
-    children: FolderTreeNode[]
-    documents?: DocWithPerm[]
+export interface TreeNode {
+    key: string
+    title: string
+    type: 'folder' | 'doc'
+    children?: TreeNode[]
+    isLeaf?: boolean
+    loaded?: boolean
+    // folder fields
+    visibilityScope?: VisibilityScope
+    // doc fields
+    accessMode?: string
+    perm?: {
+        canRead: boolean
+        canEdit: boolean
+    }
 }
 
 export interface CreateFolderInput {
@@ -38,17 +45,51 @@ export interface UpdateFolderInput {
     parentId?: string
 }
 
+export interface GetFolderDocumentsInput {
+    spaceId: string
+    folderId: string
+    username: string
+    page: number
+    pageSize: number
+}
+
+export interface GetFolderTreeDataInput {
+    spaceId: string
+    folderId: string
+    username: string
+    visibleFolderIds: string[]
+}
+
+export interface GetFolderContentsInput {
+    spaceId: string
+    folderId: string
+    username: string
+    visibleFolderIds: string[]
+}
+
+export interface FolderContentItem {
+    key: string
+    title: string
+    type: 'folder' | 'doc'
+    // folder fields
+    visibilityScope?: VisibilityScope
+    // doc fields
+    accessMode?: string
+    owner?: string
+    mtime?: string
+    ctime?: string
+    perm?: {
+        canRead: boolean
+        canEdit: boolean
+    }
+}
+
 class SpaceFolderService {
     /**
      * 获取目录下的文档列表（带权限信息）
      */
-    async getFolderDocuments(
-        spaceId: string,
-        folderId: string,
-        username: string,
-        page: number,
-        pageSize: number
-    ): Promise<{ docs: DocWithPerm[]; total: number }> {
+    async getFolderDocuments(input: GetFolderDocumentsInput): Promise<{ docs: DocWithPerm[]; total: number }> {
+        const { folderId, username, page, pageSize } = input
         const ds = getDataSource()
 
         const docFolders = await ds.getRepository(DocFolder).find({
@@ -69,7 +110,7 @@ class SpaceFolderService {
 
         const docsWithPerm: DocWithPerm[] = await Promise.all(
             docs.map(async (doc) => {
-                const perm = await permissionService.getDocPermission(username, doc.documentId)
+                const perm = await permissionService.getDocPermission({ username, doc })
                 return {
                     ...doc,
                     perm: {
@@ -85,18 +126,15 @@ class SpaceFolderService {
 
     /**
      * 获取目录树数据（懒加载模式）
+     * 返回统一的 TreeNode 数组，目录和文档混合在同一层级
      */
-    async getFolderTreeData(
-        spaceId: string,
-        folderId: string,
-        username: string,
-        visibleFolderIds: string[]
-    ): Promise<{ folders: FolderTreeNode[]; documents: DocWithPerm[] }> {
+    async getFolderTreeData(input: GetFolderTreeDataInput): Promise<TreeNode[]> {
+        const { folderId, username, visibleFolderIds } = input
         const ds = getDataSource()
 
         // 获取子目录
         const folders = await ds.getRepository(SpaceFolder).find({
-            where: { parentId: folderId, isDeleted: 0 },
+            where: { parentId: folderId },
             order: { order: 'ASC', id: 'ASC' }
         })
 
@@ -109,18 +147,33 @@ class SpaceFolderService {
         })
         const docIds = docFolders.map(df => df.docId)
 
-        let documents: DocWithPerm[] = []
+        // 构建目录节点
+        const folderNodes: TreeNode[] = visibleFolders.map(f => ({
+            key: f.documentId,
+            title: f.name,
+            type: 'folder' as const,
+            isLeaf: false,
+            loaded: false,
+            visibilityScope: f.visibilityScope
+        }))
+
+        // 构建文档节点
+        let docNodes: TreeNode[] = []
         if (docIds.length > 0) {
             const docs = await ds.getRepository(Doc).find({
-                where: { id: In(docIds), isDeleted: 0 },
+                where: { documentId: In(docIds), isDeleted: 0 },
                 order: { mtime: 'DESC' }
             })
 
-            documents = await Promise.all(
+            docNodes = await Promise.all(
                 docs.map(async (doc) => {
-                    const perm = await permissionService.getDocPermission(username, doc.documentId)
+                    const perm = await permissionService.getDocPermission({ username, doc })
                     return {
-                        ...doc,
+                        key: doc.documentId,
+                        title: doc.title,
+                        type: 'doc' as const,
+                        isLeaf: true,
+                        accessMode: doc.accessMode,
                         perm: {
                             canRead: perm.canRead,
                             canEdit: perm.canEdit
@@ -130,18 +183,74 @@ class SpaceFolderService {
             )
         }
 
-        // 构建树节点
-        const treeNodes: FolderTreeNode[] = visibleFolders.map(f => ({
-            id: f.documentId,
-            name: f.name,
-            parentId: f.parentId,
+        // 目录在前，文档在后
+        return [...folderNodes, ...docNodes]
+    }
+
+    /**
+     * 获取目录内容（子目录 + 文档详细列表）
+     * 用于右侧内容区展示
+     */
+    async getFolderContents(input: GetFolderContentsInput): Promise<FolderContentItem[]> {
+        const { folderId, username, visibleFolderIds } = input
+        const ds = getDataSource()
+
+        // 获取子目录
+        const folders = await ds.getRepository(SpaceFolder).find({
+            where: { parentId: folderId },
+            order: { order: 'ASC', id: 'ASC' }
+        })
+
+        // 过滤不可见目录
+        const visibleFolders = folders.filter(f => visibleFolderIds.includes(f.documentId))
+
+        // 获取当前目录下的文档
+        const docFolders = await ds.getRepository(DocFolder).find({
+            where: { folderId }
+        })
+
+        const docIds = docFolders.map(df => df.docId)
+
+        // 构建目录内容项
+        const folderItems: FolderContentItem[] = visibleFolders.map(f => ({
+            key: f.documentId,
+            title: f.name,
+            type: 'folder' as const,
             visibilityScope: f.visibilityScope,
-            order: f.order,
-            children: [],
-            documents: []
+            mtime: f.mtime?.toISOString(),
+            ctime: f.ctime?.toISOString()
         }))
 
-        return { folders: treeNodes, documents }
+        // 构建文档内容项
+        let docItems: FolderContentItem[] = []
+        if (docIds.length > 0) {
+            const docs = await ds.getRepository(Doc).find({
+                where: { documentId: In(docIds), isDeleted: 0 },
+                order: { mtime: 'DESC' }
+            })
+
+            docItems = await Promise.all(
+                docs.map(async (doc) => {
+                    const perm = await permissionService.getDocPermission({ username, doc })
+                    return {
+                        key: doc.documentId,
+                        title: doc.title,
+                        type: 'doc' as const,
+                        accessMode: doc.accessMode,
+                        owner: doc.owner,
+                        mtime: doc.mtime?.toISOString(),
+                        ctime: doc.ctime?.toISOString(),
+                        perm: {
+                            canRead: perm.canRead,
+                            canEdit: perm.canEdit
+                        }
+                    }
+                })
+            )
+        }
+
+        // 目录在前，文档在后
+        return [...folderItems, ...docItems]
     }
 
     /**
@@ -150,7 +259,7 @@ class SpaceFolderService {
     async getParentFolder(parentId: string, spaceId: string): Promise<SpaceFolder | null> {
         const ds = getDataSource()
         return ds.getRepository(SpaceFolder).findOne({
-            where: { documentId: parentId, isDeleted: 0 }
+            where: { documentId: parentId }
         })
     }
 
@@ -162,31 +271,39 @@ class SpaceFolderService {
 
         // 查找父目录的 documentId（用于设置 parent 关系）
         let parentDocumentId: string | null = null
-        if (input.parentId && input.parentId !== '0') {
+
+        if (input.parentId) {
             const parentFolder = await ds.getRepository(SpaceFolder).findOne({
                 where: { documentId: input.parentId }
             })
             if (parentFolder) {
                 parentDocumentId = parentFolder.documentId
             }
+        } else {
+            // 根目录
+            const rootFolder = await ds.getRepository(SpaceFolder).findOne({
+                where: { spaceId: input.spaceId, parentId: '' }
+            })
+            if (rootFolder) {
+                parentDocumentId = rootFolder.documentId
+            }
         }
 
         // 通过 Strapi 创建目录
-        const createData: Record<string, unknown> = {
-            spaceId: String(input.spaceId),
-            parentId: String(input.parentId),
+        const createData: Partial<SpaceFolder> = {
+            spaceId: input.spaceId,
+            parentId: input.parentId || '',
             name: input.name,
-            visibilityScope: input.visibilityScope || VisibilityScope.ALL,
-            order: input.order ?? 0,
-            isDeleted: false
+            visibilityScope: (input.visibilityScope as VisibilityScope) || VisibilityScope.ALL,
+            order: input.order ?? 0
         }
 
         // 设置 parent 关系字段
         if (parentDocumentId) {
-            createData.parent = parentDocumentId
+            createData.parentId = parentDocumentId
         }
 
-        const result = await strapiClient.create<any>('space-folders', createData)
+        const result = await strapiClient.create<SpaceFolder>('space-folders', createData)
 
         // 重新查询获取完整数据
         const folder = await ds.getRepository(SpaceFolder).findOne({
@@ -202,7 +319,7 @@ class SpaceFolderService {
     async getFolderById(folderId: string): Promise<SpaceFolder | null> {
         const ds = getDataSource()
         return ds.getRepository(SpaceFolder).findOne({
-            where: { documentId: folderId, isDeleted: 0 }
+            where: { documentId: folderId }
         })
     }
 
@@ -212,7 +329,7 @@ class SpaceFolderService {
     async updateFolder(folderId: string, input: UpdateFolderInput): Promise<SpaceFolder | null> {
         const ds = getDataSource()
         const folder = await ds.getRepository(SpaceFolder).findOne({
-            where: { documentId: folderId, isDeleted: 0 }
+            where: { documentId: folderId }
         })
 
         if (!folder) {
@@ -230,7 +347,7 @@ class SpaceFolderService {
             strapiInput.parentId = String(input.parentId)
 
             // 查找新父目录的 documentId
-            if (input.parentId && input.parentId !== '0') {
+            if (input.parentId) {
                 const newParentFolder = await ds.getRepository(SpaceFolder).findOne({
                     where: { documentId: input.parentId }
                 })
@@ -245,7 +362,7 @@ class SpaceFolderService {
         }
 
         // 通过 Strapi 更新
-        await strapiClient.update<any>('space-folders', folder.documentId, strapiInput)
+        await strapiClient.update<SpaceFolder>('space-folders', folder.documentId, strapiInput)
 
         // 重新查询获取完整数据
         const updatedFolder = await ds.getRepository(SpaceFolder).findOne({
@@ -255,33 +372,10 @@ class SpaceFolderService {
     }
 
     /**
-     * 软删除目录（递归）
+     * 物理删除目录
      */
     async deleteFolder(folderId: string): Promise<void> {
-        const ds = getDataSource()
-        await this.softDeleteFolderRecursive(ds, folderId)
-    }
-
-    /**
-     * 递归软删除目录
-     */
-    private async softDeleteFolderRecursive(ds: ReturnType<typeof getDataSource>, folderId: string) {
-        const folder = await ds.getRepository(SpaceFolder).findOne({
-            where: { documentId: folderId }
-        })
-
-        if (folder) {
-            // 通过 Strapi 软删除
-            await strapiClient.update<any>('space-folders', folder.documentId, { isDeleted: true })
-        }
-
-        const children = await ds.getRepository(SpaceFolder).find({
-            where: { parentId: folderId, isDeleted: 0 }
-        })
-
-        for (const child of children) {
-            await this.softDeleteFolderRecursive(ds, child.documentId)
-        }
+        await strapiClient.delete('space-folders', folderId)
     }
 }
 

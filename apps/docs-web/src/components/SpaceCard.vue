@@ -6,8 +6,8 @@ export interface SpaceItem {
   id: string;
   title: string;
   folderCount: number;
-  fileCount: number;
-  time: string;
+  docCount: number;
+  // time: string;
   icon: Component;
   bgColor: string;
   iconColor: string;
@@ -34,12 +34,12 @@ defineProps<{
             </span>
             <span class="flex items-center gap-1">
               <FileText class="w-3.5 h-3.5" />
-              {{ item.fileCount }}
+              {{ item.docCount }}
             </span>
-            <span class="flex items-center gap-1">
+            <!-- <span class="flex items-center gap-1">
               <Clock class="w-3.5 h-3.5" />
               {{ item.time }}
-            </span>
+            </span> -->
           </div>
         </div>
       </div>

@@ -71,7 +71,7 @@ export class AuthExtension implements Extension {
             }
 
             // 检查用户对文档的权限
-            const perm = await permissionService.getDocPermission(payload.sub, docId)
+            const perm = await permissionService.getDocPermission({ username: payload.sub, docId })
 
             if (!perm.canRead) {
                 logger.warn(`[Collab] User ${payload.sub} has no read permission for doc ${docId}`)

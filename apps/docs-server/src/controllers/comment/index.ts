@@ -16,12 +16,12 @@ export async function getDocComments(req: AuthenticatedRequest, res: Response) {
         const username = req.user!.username
 
         // 检查文档读权限
-        const perm = await permissionService.getDocPermission(username, documentId)
+        const perm = await permissionService.getDocPermission({username, docId: documentId})
         if (!perm.canRead) {
             return forbidden(res, '无权访问此文档')
         }
 
-        const { comments, total } = await commentService.getDocComments(documentId, page, pageSize)
+        const { comments, total } = await commentService.getDocComments({ documentId, page, pageSize })
         return paginated(res, comments, total, page, pageSize)
     } catch (error) {
         return errorResponse(res, error)
@@ -37,20 +37,21 @@ export async function createComment(req: AuthenticatedRequest, res: Response) {
         const username = req.user!.username
 
         // 检查文档读权限（有读权限即可评论）
-        const perm = await permissionService.getDocPermission(username, input.docId)
+        const perm = await permissionService.getDocPermission({username, docId: input.docId})
         if (!perm.canRead) {
             return forbidden(res, '无权访问此文档')
         }
 
         // 如果是回复，检查父评论是否存在
-        if (input.parentId !== '0') {
-            const parentComment = await commentService.getParentComment(input.parentId, input.docId)
+        console.log('input.parentId', input.parentId);
+        if (input.parentId) {
+            const parentComment = await commentService.getParentComment({ parentId: input.parentId, docId: input.docId })
             if (!parentComment) {
                 return notFound(res, '父评论不存在')
             }
         }
 
-        const comment = await commentService.createComment(input, username)
+        const comment = await commentService.createComment({ ...input, username })
 
         logger.info(`[Comment] Created comment ${comment.id} on doc ${input.docId} by ${username}`)
         return successResponse(res, comment)
@@ -102,7 +103,7 @@ export async function deleteComment(req: AuthenticatedRequest, res: Response) {
 
         // 检查是否是作者或空间超管
         const isAuthor = comment.username === username
-        const docPerm = await permissionService.getDocPermission(username, comment.docId)
+        const docPerm = await permissionService.getDocPermission({ username, docId: comment.docId })
         const canDelete = isAuthor || docPerm.isSuperAdmin
 
         if (!canDelete) {

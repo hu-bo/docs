@@ -3,7 +3,7 @@ import { z } from 'zod'
 // Create comment
 export const createCommentSchema = z.object({
     docId: z.string(),
-    parentId: z.string().default('0'),
+    parentId: z.string().default(''),
     content: z.string().min(1)
 })
 

@@ -3,8 +3,8 @@ import { ref } from 'vue';
 import type { ConnectionStatus, CollaborationUser } from '@/types';
 import * as collaborationApi from '@/api/collaboration';
 
-// Token cache with TTL
-let tokenCache: { token: string; expiresAt: number } | null = null;
+// Token cache with TTL (keyed by docId)
+let tokenCache: { docId: string; token: string; expiresAt: number } | null = null;
 const TOKEN_TTL = 5 * 60 * 1000; // 5 minutes
 
 export const useCollaborationStore = defineStore('collaboration', () => {
@@ -16,19 +16,20 @@ export const useCollaborationStore = defineStore('collaboration', () => {
   const wsToken = ref<string | null>(null);
 
   // Actions
-  async function fetchWsToken(forceRefresh = false): Promise<string> {
-    // Check cache first
-    if (!forceRefresh && tokenCache && Date.now() < tokenCache.expiresAt) {
+  async function fetchWsToken(docId: string, forceRefresh = false): Promise<string> {
+    // Check cache first (must match docId)
+    if (!forceRefresh && tokenCache && tokenCache.docId === docId && Date.now() < tokenCache.expiresAt) {
       wsToken.value = tokenCache.token;
       return tokenCache.token;
     }
 
     try {
-      const data = await collaborationApi.getCollaborationToken();
+      const data = await collaborationApi.getCollaborationToken(docId);
       const token = data.token;
 
       // Update cache
       tokenCache = {
+        docId,
         token,
         expiresAt: Date.now() + TOKEN_TTL,
       };

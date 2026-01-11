@@ -35,6 +35,4 @@ export class Comment {
     @Column({ type: 'text' })
     content: string
 
-    @Column({ name: 'is_deleted', type: 'tinyint', default: 0 })
-    isDeleted: number
 }

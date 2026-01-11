@@ -18,27 +18,18 @@
       "type": "string",
       "default": "0"
     },
-    "parent": {
-      "type": "relation",
-      "relation": "manyToOne",
-      "target": "api::space-folder.space-folder",
-      "inversedBy": "children"
-    },
-    "children": {
-      "type": "relation",
-      "relation": "oneToMany",
-      "target": "api::space-folder.space-folder",
-      "mappedBy": "parent"
-    },
     "name": {
       "type": "string",
-      "required": true,
-      "maxLength": 128
+      "maxLength": 128,
+      "required": true
     },
     "visibilityScope": {
       "type": "enumeration",
-      "enum": ["ALL", "DEPT_ONLY"],
-      "default": "ALL"
+      "default": "ALL",
+      "enum": [
+        "ALL",
+        "DEPT_ONLY"
+      ]
     },
     "order": {
       "type": "integer",
