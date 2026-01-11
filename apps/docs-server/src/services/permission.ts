@@ -334,7 +334,7 @@ export class PermissionService {
         });
 
         const visibleIds: string[] = [""]; // 根目录始终可见
-        console.log(folders, spaceId)
+
         for (const folder of folders) {
             if (folder.visibilityScope === VisibilityScope.ALL) {
                 visibleIds.push(folder.documentId);
