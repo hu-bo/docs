@@ -1,4 +1,5 @@
-import { Entity, Column, PrimaryGeneratedColumn, CreateDateColumn, UpdateDateColumn, Index, Unique } from 'typeorm'
+import { Entity, Column, PrimaryGeneratedColumn, CreateDateColumn, UpdateDateColumn, Index, Unique, ManyToOne, JoinColumn } from 'typeorm'
+import { Doc } from './Doc'
 
 export enum DocPerm {
     READ = 'READ',
@@ -32,6 +33,10 @@ export class DocUserAcl {
 
     @Column({ name: 'doc_id', type: 'bigint', default: '' })
     docId: string
+
+    @ManyToOne(() => Doc)
+    @JoinColumn({ name: 'doc_id', referencedColumnName: 'documentId' })
+    doc: Doc
 
     @Column({ type: 'varchar', length: 128 })
     username: string

@@ -4,7 +4,8 @@ import { SpaceFolder, VisibilityScope } from '../entities/SpaceFolder'
 import { Doc } from '../entities/Doc'
 import { DocFolder } from '../entities/DocFolder'
 import { permissionService } from './permission'
-import { In } from 'typeorm'
+
+// Doc 类型用于 DocWithPerm 接口
 
 export interface DocWithPerm extends Doc {
     perm?: {
@@ -92,27 +93,31 @@ class SpaceFolderService {
         const { folderId, username, page, pageSize } = input
         const ds = getDataSource()
 
+        // 使用 relations 一次性加载关联的 doc
         const docFolders = await ds.getRepository(DocFolder).find({
-            where: { folderId }
+            where: { folderId },
+            relations: ['doc']
         })
-        const docIds = docFolders.map(df => df.docId)
 
-        if (docIds.length === 0) {
+        // 过滤掉已删除的文档
+        const validDocFolders = docFolders.filter(df => df.doc && df.doc.isDeleted === 0)
+
+        if (validDocFolders.length === 0) {
             return { docs: [], total: 0 }
         }
 
-        const [docs, total] = await ds.getRepository(Doc).findAndCount({
-            where: { id: In(docIds), isDeleted: 0 },
-            order: { mtime: 'DESC' },
-            skip: (page - 1) * pageSize,
-            take: pageSize
-        })
+        // 手动排序和分页
+        const sortedDocFolders = validDocFolders.sort((a, b) =>
+            new Date(b.doc.mtime).getTime() - new Date(a.doc.mtime).getTime()
+        )
+        const total = sortedDocFolders.length
+        const pagedDocFolders = sortedDocFolders.slice((page - 1) * pageSize, page * pageSize)
 
         const docsWithPerm: DocWithPerm[] = await Promise.all(
-            docs.map(async (doc) => {
-                const perm = await permissionService.getDocPermission({ username, doc })
+            pagedDocFolders.map(async (df) => {
+                const perm = await permissionService.getDocPermission({ username, doc: df.doc })
                 return {
-                    ...doc,
+                    ...df.doc,
                     perm: {
                         canRead: perm.canRead,
                         canEdit: perm.canEdit
@@ -141,11 +146,11 @@ class SpaceFolderService {
         // 过滤不可见目录
         const visibleFolders = folders.filter(f => visibleFolderIds.includes(f.documentId))
 
-        // 获取当前目录下的文档
+        // 使用 relations 一次性加载关联的 doc
         const docFolders = await ds.getRepository(DocFolder).find({
-            where: { folderId }
+            where: { folderId },
+            relations: ['doc']
         })
-        const docIds = docFolders.map(df => df.docId)
 
         // 构建目录节点
         const folderNodes: TreeNode[] = visibleFolders.map(f => ({
@@ -157,31 +162,28 @@ class SpaceFolderService {
             visibilityScope: f.visibilityScope
         }))
 
-        // 构建文档节点
-        let docNodes: TreeNode[] = []
-        if (docIds.length > 0) {
-            const docs = await ds.getRepository(Doc).find({
-                where: { documentId: In(docIds), isDeleted: 0 },
-                order: { mtime: 'DESC' }
-            })
+        // 过滤已删除的文档并排序
+        const validDocFolders = docFolders
+            .filter(df => df.doc && df.doc.isDeleted === 0)
+            .sort((a, b) => new Date(b.doc.mtime).getTime() - new Date(a.doc.mtime).getTime())
 
-            docNodes = await Promise.all(
-                docs.map(async (doc) => {
-                    const perm = await permissionService.getDocPermission({ username, doc })
-                    return {
-                        key: doc.documentId,
-                        title: doc.title,
-                        type: 'doc' as const,
-                        isLeaf: true,
-                        accessMode: doc.accessMode,
-                        perm: {
-                            canRead: perm.canRead,
-                            canEdit: perm.canEdit
-                        }
+        // 构建文档节点
+        const docNodes: TreeNode[] = await Promise.all(
+            validDocFolders.map(async (df) => {
+                const perm = await permissionService.getDocPermission({ username, doc: df.doc })
+                return {
+                    key: df.doc.documentId,
+                    title: df.doc.title,
+                    type: 'doc' as const,
+                    isLeaf: true,
+                    accessMode: df.doc.accessMode,
+                    perm: {
+                        canRead: perm.canRead,
+                        canEdit: perm.canEdit
                     }
-                })
-            )
-        }
+                }
+            })
+        )
 
         // 目录在前，文档在后
         return [...folderNodes, ...docNodes]
@@ -204,12 +206,11 @@ class SpaceFolderService {
         // 过滤不可见目录
         const visibleFolders = folders.filter(f => visibleFolderIds.includes(f.documentId))
 
-        // 获取当前目录下的文档
+        // 使用 relations 一次性加载关联的 doc
         const docFolders = await ds.getRepository(DocFolder).find({
-            where: { folderId }
+            where: { folderId },
+            relations: ['doc']
         })
-
-        const docIds = docFolders.map(df => df.docId)
 
         // 构建目录内容项
         const folderItems: FolderContentItem[] = visibleFolders.map(f => ({
@@ -221,33 +222,30 @@ class SpaceFolderService {
             ctime: f.ctime?.toISOString()
         }))
 
-        // 构建文档内容项
-        let docItems: FolderContentItem[] = []
-        if (docIds.length > 0) {
-            const docs = await ds.getRepository(Doc).find({
-                where: { documentId: In(docIds), isDeleted: 0 },
-                order: { mtime: 'DESC' }
-            })
+        // 过滤已删除的文档并排序
+        const validDocFolders = docFolders
+            .filter(df => df.doc && df.doc.isDeleted === 0)
+            .sort((a, b) => new Date(b.doc.mtime).getTime() - new Date(a.doc.mtime).getTime())
 
-            docItems = await Promise.all(
-                docs.map(async (doc) => {
-                    const perm = await permissionService.getDocPermission({ username, doc })
-                    return {
-                        key: doc.documentId,
-                        title: doc.title,
-                        type: 'doc' as const,
-                        accessMode: doc.accessMode,
-                        owner: doc.owner,
-                        mtime: doc.mtime?.toISOString(),
-                        ctime: doc.ctime?.toISOString(),
-                        perm: {
-                            canRead: perm.canRead,
-                            canEdit: perm.canEdit
-                        }
+        // 构建文档内容项
+        const docItems: FolderContentItem[] = await Promise.all(
+            validDocFolders.map(async (df) => {
+                const perm = await permissionService.getDocPermission({ username, doc: df.doc })
+                return {
+                    key: df.doc.documentId,
+                    title: df.doc.title,
+                    type: 'doc' as const,
+                    accessMode: df.doc.accessMode,
+                    owner: df.doc.owner,
+                    mtime: df.doc.mtime?.toISOString(),
+                    ctime: df.doc.ctime?.toISOString(),
+                    perm: {
+                        canRead: perm.canRead,
+                        canEdit: perm.canEdit
                     }
-                })
-            )
-        }
+                }
+            })
+        )
 
         // 目录在前，文档在后
         return [...folderItems, ...docItems]

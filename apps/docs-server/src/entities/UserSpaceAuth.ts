@@ -1,4 +1,5 @@
-import { Entity, Column, PrimaryGeneratedColumn, CreateDateColumn, UpdateDateColumn, Index, Unique } from 'typeorm'
+import { Entity, Column, PrimaryGeneratedColumn, CreateDateColumn, UpdateDateColumn, Index, Unique, ManyToOne, JoinColumn } from 'typeorm'
+import { Space } from './Space'
 
 export enum AuthSource {
     AUTO_INIT = 'AUTO_INIT',
@@ -32,6 +33,10 @@ export class UserSpaceAuth {
 
     @Column({ name: 'space_id', type: 'bigint', default: '' })
     spaceId: string
+
+    @ManyToOne(() => Space)
+    @JoinColumn({ name: 'space_id', referencedColumnName: 'documentId' })
+    space: Space
 
     @Column({ type: 'varchar', length: 128 })
     username: string

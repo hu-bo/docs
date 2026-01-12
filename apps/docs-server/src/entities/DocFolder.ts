@@ -1,4 +1,6 @@
-import { Entity, Column, PrimaryGeneratedColumn, CreateDateColumn, UpdateDateColumn, Index } from 'typeorm'
+import { Entity, Column, PrimaryGeneratedColumn, CreateDateColumn, UpdateDateColumn, Index, ManyToOne, JoinColumn } from 'typeorm'
+import { Doc } from './Doc'
+import { SpaceFolder } from './SpaceFolder'
 
 @Entity('doc_folder')
 export class DocFolder {
@@ -25,7 +27,15 @@ export class DocFolder {
     @Column({ name: 'doc_id', type: 'varchar', length: 128 })
     docId: string
 
+    @ManyToOne(() => Doc)
+    @JoinColumn({ name: 'doc_id', referencedColumnName: 'documentId' })
+    doc: Doc
+
     @Index('IDX_folder_id')
     @Column({ name: 'folder_id', type: 'varchar', length: 128 })
     folderId: string
+
+    @ManyToOne(() => SpaceFolder)
+    @JoinColumn({ name: 'folder_id', referencedColumnName: 'documentId' })
+    folder: SpaceFolder
 }

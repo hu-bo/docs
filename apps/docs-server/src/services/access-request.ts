@@ -3,7 +3,6 @@ import { strapiClient } from '../tools/strapi/strapiClient'
 import { AccessRequest, AccessRequestType, AccessRequestStatus } from '../entities/AccessRequest'
 import { Doc } from '../entities/Doc'
 import { DocUserAcl, DocPerm } from '../entities/DocUserAcl'
-import { In } from 'typeorm'
 
 export interface ApplyAccessInput {
     type: string
@@ -125,7 +124,9 @@ class AccessRequestService {
         const { docIds, page, pageSize } = input
         const ds = getDataSource()
 
+        // 使用 relations 一次性加载关联的 targetDoc
         const qb = ds.getRepository(AccessRequest).createQueryBuilder('ar')
+            .leftJoinAndSelect('ar.targetDoc', 'targetDoc')
             .where('ar.type = :type', { type: AccessRequestType.DOC })
             .andWhere('ar.target_id IN (:...docIds)', { docIds })
             .andWhere('ar.status = :status', { status: AccessRequestStatus.PENDING })
@@ -135,18 +136,14 @@ class AccessRequestService {
 
         const [requests, total] = await qb.getManyAndCount()
 
-        const requestsWithDoc: AccessRequestWithDoc[] = await Promise.all(
-            requests.map(async (req) => {
-                const doc = await ds.getRepository(Doc).findOne({
-                    where: { documentId: req.targetId },
-                    select: ['documentId', 'title', 'owner']
-                })
-                return {
-                    ...req,
-                    doc: doc ? { id: doc.documentId, title: doc.title, owner: doc.owner } : null
-                }
-            })
-        )
+        const requestsWithDoc: AccessRequestWithDoc[] = requests.map(req => ({
+            ...req,
+            doc: req.targetDoc ? {
+                id: req.targetDoc.documentId,
+                title: req.targetDoc.title,
+                owner: req.targetDoc.owner
+            } : null
+        }))
 
         return { requests: requestsWithDoc, total }
     }

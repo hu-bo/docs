@@ -1,5 +1,6 @@
-import { Entity, Column, PrimaryGeneratedColumn, CreateDateColumn, UpdateDateColumn, Index, Unique } from 'typeorm'
+import { Entity, Column, PrimaryGeneratedColumn, CreateDateColumn, UpdateDateColumn, Index, Unique, ManyToOne, JoinColumn } from 'typeorm'
 import moment from 'moment'
+import { Doc } from './Doc'
 
 @Entity('doc_user_activity')
 @Unique('UK_doc_user', ['docId', 'username'])
@@ -26,6 +27,10 @@ export class DocUserActivity {
 
     @Column({ name: 'doc_id', type: 'varchar', length: 128, default: '' })
     docId: string
+
+    @ManyToOne(() => Doc)
+    @JoinColumn({ name: 'doc_id', referencedColumnName: 'documentId' })
+    doc: Doc
 
     @Column({ type: 'varchar', length: 64, default: '' })
     username: string

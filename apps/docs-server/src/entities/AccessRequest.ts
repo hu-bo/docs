@@ -1,5 +1,6 @@
-import { Entity, Column, PrimaryGeneratedColumn, CreateDateColumn, UpdateDateColumn, Index } from 'typeorm'
+import { Entity, Column, PrimaryGeneratedColumn, CreateDateColumn, UpdateDateColumn, Index, ManyToOne, JoinColumn } from 'typeorm'
 import moment from 'moment'
+import { Doc } from './Doc'
 
 export enum AccessRequestType {
     SPACE = 'SPACE',
@@ -39,6 +40,10 @@ export class AccessRequest {
 
     @Column({ name: 'target_id', type: 'varchar', length: 128, default: '' })
     targetId: string
+
+    @ManyToOne(() => Doc)
+    @JoinColumn({ name: 'target_id', referencedColumnName: 'documentId' })
+    targetDoc: Doc
 
     @Index('IDX_username')
     @Column({ type: 'varchar', length: 128 })

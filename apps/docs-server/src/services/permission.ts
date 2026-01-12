@@ -127,19 +127,21 @@ export class PermissionService {
         const isOwner = doc.owner === username;
 
         // 检查是否是文档所在空间的super_admin
+        // 使用 relations 一次性加载关联的 space
         const docSpaceAcls = await ds.getRepository(DocSpaceAcl).find({
             where: { docId },
+            relations: ['space'],
         });
 
+        const spaceIds = docSpaceAcls.map(acl => acl.spaceId);
         let isSuperAdmin = false;
-        for (const acl of docSpaceAcls) {
-            const spaceAuth = await ds.getRepository(UserSpaceAuth).findOne({
-                where: { spaceId: acl.spaceId, username, superAdmin: 1 },
+
+        if (spaceIds.length > 0) {
+            // 一次性查询用户在所有相关空间的权限
+            const userSpaceAuths = await ds.getRepository(UserSpaceAuth).find({
+                where: spaceIds.map(spaceId => ({ spaceId, username, superAdmin: 1 })),
             });
-            if (spaceAuth) {
-                isSuperAdmin = true;
-                break;
-            }
+            isSuperAdmin = userSpaceAuths.length > 0;
         }
 
         // Owner 和 superAdmin 都有完全权限
@@ -265,13 +267,23 @@ export class PermissionService {
             where: { docId },
         });
 
-        for (const acl of docSpaceAcls) {
-            // 检查用户是否在该空间有权限记录
-            const userSpaceAuth = await ds.getRepository(UserSpaceAuth).findOne({
-                where: { spaceId: acl.spaceId, username },
-            });
+        if (docSpaceAcls.length === 0) {
+            return false;
+        }
 
-            if (!userSpaceAuth) continue;
+        const spaceIds = docSpaceAcls.map(acl => acl.spaceId);
+
+        // 一次性查询用户在所有相关空间的权限
+        const userSpaceAuths = await ds.getRepository(UserSpaceAuth).find({
+            where: spaceIds.map(spaceId => ({ spaceId, username })),
+        });
+
+        // 构建 spaceId -> auth 映射
+        const authMap = new Map(userSpaceAuths.map(auth => [auth.spaceId, auth]));
+
+        for (const acl of docSpaceAcls) {
+            const userAuth = authMap.get(acl.spaceId);
+            if (!userAuth) continue;
 
             if (minPerm === DocSpacePerm.READ) {
                 return true; // Any perm satisfies READ

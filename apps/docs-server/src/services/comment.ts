@@ -32,25 +32,22 @@ class CommentService {
         const { documentId, page, pageSize } = input
         const ds = getDataSource()
 
+        // 使用 relations 一次性加载回复
         const [topLevelComments, total] = await ds.getRepository(Comment).findAndCount({
             where: { docId: documentId, parentId: '' },
+            relations: ['replies'],
             order: { ctime: 'DESC' },
             skip: (page - 1) * pageSize,
             take: pageSize
         })
 
-        const commentsWithReplies: CommentWithReplies[] = await Promise.all(
-            topLevelComments.map(async (comment) => {
-                const replies = await ds.getRepository(Comment).find({
-                    where: { parentId: comment.documentId },
-                    order: { ctime: 'ASC' }
-                })
-                return {
-                    ...comment,
-                    replies
-                }
-            })
-        )
+        // 对回复按时间排序
+        const commentsWithReplies: CommentWithReplies[] = topLevelComments.map(comment => ({
+            ...comment,
+            replies: comment.replies?.sort((a, b) =>
+                new Date(a.ctime).getTime() - new Date(b.ctime).getTime()
+            ) || []
+        }))
 
         return { comments: commentsWithReplies, total }
     }
@@ -128,20 +125,18 @@ class CommentService {
     async deleteComment(commentId: string): Promise<void> {
         const ds = getDataSource()
 
-        // 先查找要删除的评论
+        // 使用 relations 一次性加载评论及其回复
         const comment = await ds.getRepository(Comment).findOne({
-            where: { documentId: commentId }
+            where: { documentId: commentId },
+            relations: ['replies']
         })
 
         if (comment) {
-            // 查找所有回复
-            const replies = await ds.getRepository(Comment).find({
-                where: { parentId: commentId }
-            })
-
             // 通过 Strapi 软删除所有回复
-            for (const reply of replies) {
-                await strapiClient.delete('comments', reply.documentId)
+            if (comment.replies) {
+                for (const reply of comment.replies) {
+                    await strapiClient.delete('comments', reply.documentId)
+                }
             }
 
             // 通过 Strapi 软删除主评论

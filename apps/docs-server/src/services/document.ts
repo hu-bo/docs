@@ -4,7 +4,6 @@ import { Doc, AccessMode } from '../entities/Doc'
 import { DocFolder } from '../entities/DocFolder'
 import { DocUserAcl, DocPerm } from '../entities/DocUserAcl'
 import { DocSpaceAcl, DocSpacePerm } from '../entities/DocSpaceAcl'
-import { Space } from '../entities/Space'
 import { SpaceFolder } from '../entities/SpaceFolder'
 import { DocUserActivity } from '../entities/DocUserActivity'
 import { logger } from '../utils/logger'
@@ -102,8 +101,11 @@ class DocumentService {
     }) {
         const ds = getDataSource()
         const { limit = 100, spaceId } = options
-        const [activities, total] = await ds.getRepository(DocUserActivity).findAndCount({
+
+        // 使用 relations 一次性加载关联的 doc
+        const activities = await ds.getRepository(DocUserActivity).find({
             where: { username },
+            relations: ['doc'],
             order: { lastViewedAt: 'DESC' },
             take: limit
         })
@@ -112,43 +114,35 @@ class DocumentService {
             return []
         }
 
-        const docIds = activities.map(a => a.docId)
-        const docs = await ds.getRepository(Doc).find({
-            where: docIds.map(id => ({ documentId: id, isDeleted: 0 }))
-        })
+        // 过滤掉已删除的文档
+        const validActivities = activities.filter(a => a.doc && a.doc.isDeleted === 0)
+        const docIds = validActivities.map(a => a.docId)
 
-        // 查询文档绑定的空间（取第一个绑定的空间作为主空间）
-        const docSpaceBindings = await ds
-            .getRepository(DocSpaceAcl)
-            .createQueryBuilder('dsa')
-            .select(['dsa.docId as docId', 's.documentId as spaceDocumentId'])
-            .innerJoin(Space, 's', 's.documentId = dsa.spaceId')
-            .where('dsa.docId IN (:...docIds)', { docIds })
-            .getRawMany<{ docId: string; spaceDocumentId: string }>()
+        if (docIds.length === 0) {
+            return []
+        }
+
+        // 使用 relations 加载空间信息
+        const docSpaceAcls = await ds.getRepository(DocSpaceAcl).find({
+            where: docIds.map(id => ({ docId: id })),
+            relations: ['space']
+        })
 
         // 构建 docId -> spaceDocumentId 映射（取第一个）
         const docSpaceMap = new Map<string, string>()
-        for (const binding of docSpaceBindings) {
-            if (!docSpaceMap.has(binding.docId)) {
-                docSpaceMap.set(binding.docId, binding.spaceDocumentId)
+        for (const acl of docSpaceAcls) {
+            if (!docSpaceMap.has(acl.docId) && acl.space) {
+                docSpaceMap.set(acl.docId, acl.space.documentId)
             }
         }
 
-        const docMap = new Map(docs.map(d => [d.documentId, d]))
-
-        const result = activities
-            .map(activity => {
-                const doc = docMap.get(activity.docId)
-                if (!doc) return null
-                return {
-                    ...doc,
-                    spaceId: docSpaceMap.get(activity.docId) || null,
-                    lastViewedAt: activity.lastViewedAt,
-                    lastEditedAt: activity.lastEditedAt,
-                    visitCount: activity.visitCount
-                }
-            })
-            .filter(Boolean)
+        const result = validActivities.map(activity => ({
+            ...activity.doc,
+            spaceId: docSpaceMap.get(activity.docId) || null,
+            lastViewedAt: activity.lastViewedAt,
+            lastEditedAt: activity.lastEditedAt,
+            visitCount: activity.visitCount
+        }))
 
         return result
     }
@@ -162,9 +156,10 @@ class DocumentService {
         const ds = getDataSource()
         const { limit = 100 } = options
 
-        // 查询用户有权限的文档
+        // 使用 relations 一次性加载关联的 doc
         const acls = await ds.getRepository(DocUserAcl).find({
             where: { username },
+            relations: ['doc'],
             order: { ctime: 'DESC' },
             take: limit
         })
@@ -173,46 +168,40 @@ class DocumentService {
             return []
         }
 
-        const docIds = acls.map(a => a.docId)
-        const docs = await ds.getRepository(Doc).find({
-            where: docIds.map(id => ({ documentId: id, isDeleted: 0 }))
-        })
+        // 过滤掉已删除的文档
+        const validAcls = acls.filter(a => a.doc && a.doc.isDeleted === 0)
+        const docIds = validAcls.map(a => a.docId)
 
-        // 查询文档绑定的空间
-        const docSpaceBindings = await ds
-            .getRepository(DocSpaceAcl)
-            .createQueryBuilder('dsa')
-            .select(['dsa.docId as docId', 's.documentId as spaceDocumentId', 's.name as spaceName'])
-            .innerJoin(Space, 's', 's.documentId = dsa.spaceId')
-            .where('dsa.docId IN (:...docIds)', { docIds })
-            .getRawMany<{ docId: string; spaceDocumentId: string; spaceName: string }>()
+        if (docIds.length === 0) {
+            return []
+        }
+
+        // 使用 relations 加载空间信息
+        const docSpaceAcls = await ds.getRepository(DocSpaceAcl).find({
+            where: docIds.map(id => ({ docId: id })),
+            relations: ['space']
+        })
 
         // 构建 docId -> space 信息映射（取第一个）
         const docSpaceMap = new Map<string, { spaceId: string; spaceName: string }>()
-        for (const binding of docSpaceBindings) {
-            if (!docSpaceMap.has(binding.docId)) {
-                docSpaceMap.set(binding.docId, {
-                    spaceId: binding.spaceDocumentId,
-                    spaceName: binding.spaceName
+        for (const acl of docSpaceAcls) {
+            if (!docSpaceMap.has(acl.docId) && acl.space) {
+                docSpaceMap.set(acl.docId, {
+                    spaceId: acl.space.documentId,
+                    spaceName: acl.space.name
                 })
             }
         }
 
-        const docMap = new Map(docs.map(d => [d.documentId, d]))
-
-        const result = acls
-            .map(acl => {
-                const doc = docMap.get(acl.docId)
-                if (!doc) return null
-                const spaceInfo = docSpaceMap.get(acl.docId)
-                return {
-                    ...doc,
-                    spaceId: spaceInfo?.spaceId || null,
-                    spaceName: spaceInfo?.spaceName || null,
-                    perm: acl.perm
-                }
-            })
-            .filter(Boolean)
+        const result = validAcls.map(acl => {
+            const spaceInfo = docSpaceMap.get(acl.docId)
+            return {
+                ...acl.doc,
+                spaceId: spaceInfo?.spaceId || null,
+                spaceName: spaceInfo?.spaceName || null,
+                perm: acl.perm
+            }
+        })
 
         return result
     }
@@ -511,25 +500,20 @@ class DocumentService {
      */
     async getDocSpaces(documentId: string) {
         const ds = getDataSource()
-        return ds
-            .getRepository(DocSpaceAcl)
-            .createQueryBuilder('doc_space_acl')
-            .select([
-                'doc_space_acl.id as id',
-                'doc_space_acl.spaceId as spaceId',
-                'doc_space_acl.perm as perm',
-                'space.name as spaceName',
-                'space.documentId as spaceDocumentId',
-            ])
-            .innerJoin(Space, 'space', 'space.documentId = doc_space_acl.spaceId')
-            .where('doc_space_acl.docId = :documentId', { documentId })
-            .getRawMany<{
-                id: number
-                spaceId: string
-                perm: DocSpacePerm
-                spaceName: string
-                spaceDocumentId: string
-            }>()
+        const acls = await ds.getRepository(DocSpaceAcl).find({
+            where: { docId: documentId },
+            relations: ['space']
+        })
+
+        return acls
+            .filter(acl => acl.space)
+            .map(acl => ({
+                id: acl.id,
+                spaceId: acl.spaceId,
+                perm: acl.perm,
+                spaceName: acl.space.name,
+                spaceDocumentId: acl.space.documentId
+            }))
     }
 
     /**

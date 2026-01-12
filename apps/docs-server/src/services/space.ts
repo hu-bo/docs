@@ -4,12 +4,8 @@ import { Space } from '../entities/Space'
 import { SpaceDept } from '../entities/SpaceDept'
 import { UserSpaceAuth, AuthSource } from '../entities/UserSpaceAuth'
 import { SpaceFolder, VisibilityScope } from '../entities/SpaceFolder'
-import { Doc } from '../entities/Doc'
-import { DocFolder } from '../entities/DocFolder'
 import { SpaceType } from '../types/index'
-import { In } from 'typeorm'
 import { DocSpaceAcl } from '../entities'
-import { logger } from '../utils/logger'
 
 export interface SpaceWithStats extends Space {
     docCount: number
@@ -207,26 +203,30 @@ class SpaceService {
         const { username, page, pageSize } = input
         const ds = getDataSource()
 
+        // 使用 relations 一次性加载关联的 space
         const auths = await ds.getRepository(UserSpaceAuth).find({
-            where: { username }
+            where: { username },
+            relations: ['space']
         })
-        const spaceIds = auths.map(a => a.spaceId)
 
-        if (spaceIds.length === 0) {
+        // 过滤已删除的空间
+        const validAuths = auths.filter(a => a.space && a.space.isDeleted === 0)
+
+        if (validAuths.length === 0) {
             return { spaces: [], total: 0 }
         }
 
-        const [spaces, total] = await ds.getRepository(Space).findAndCount({
-            where: { documentId: In(spaceIds), isDeleted: 0 },
-            order: { mtime: 'DESC' },
-            skip: (page - 1) * pageSize,
-            take: pageSize
-        })
+        // 手动分页和排序
+        const sortedAuths = validAuths.sort((a, b) =>
+            new Date(b.space.mtime).getTime() - new Date(a.space.mtime).getTime()
+        )
+        const total = sortedAuths.length
+        const pagedAuths = sortedAuths.slice((page - 1) * pageSize, page * pageSize)
 
         const spaceData = await Promise.all(
-            spaces.map(async (space) => {
-                const stats = await this.getSpaceDocStats(space.documentId)
-                return { ...space, ...stats }
+            pagedAuths.map(async (auth) => {
+                const stats = await this.getSpaceDocStats(auth.space.documentId)
+                return { ...auth.space, ...stats }
             })
         )
 
