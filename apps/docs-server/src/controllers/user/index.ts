@@ -1,7 +1,7 @@
 import type { Response } from 'express'
 import { successResponse, errorResponse, forbidden, badRequest, notFound } from '../../utils/response'
 import type { AuthenticatedRequest } from '../../types/index'
-import { MOCK_USERS } from '../../types/index'
+import { MOCK_USERS } from '../../constants/user'
 import { oaService } from '../../services/oa'
 
 /**
